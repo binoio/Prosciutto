@@ -79,7 +79,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 @app.get("/")
 @limiter.limit("5/minute")
-async def root():
+async def root(request: Request):
     return FileResponse(os.path.join(BASE_DIR, "../frontend/index.html"))
 
 @app.get("/auth/login")
@@ -229,7 +229,7 @@ async def send_email(account_id: int, request: SendEmailRequest, session: Sessio
 
 @app.get("/unified/messages")
 async def unified_messages(session: Session = Depends(get_session)):
-    accounts = session.exec(select(Account).where(Account.is_active == True)).all()
+    accounts = session.exec(select(Account).where(Account.is_active)).all()
     
     all_messages = []
     import asyncio
@@ -253,7 +253,7 @@ async def unified_messages(session: Session = Depends(get_session)):
                     "accountEmail": account.email,
                     "accountId": account.id
                 })
-        except Exception as e:
+        except Exception:
             # For unified view, we might want to just skip failed accounts or log them
             continue
     
