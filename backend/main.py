@@ -202,6 +202,51 @@ def get_gmail_service(account_id: int, session: Session):
     
     return build("gmail", "v1", credentials=creds)
 
+def get_header(headers, name):
+    for header in headers:
+        if header["name"].lower() == name.lower():
+            return header["value"]
+    return None
+
+def get_detailed_messages_batch(service, messages_meta, format="metadata", metadata_headers=None):
+    if not messages_meta:
+        return []
+
+    detailed_messages_dict = {}
+
+    def callback(request_id, response, exception):
+        if exception is not None:
+            # In a real app, we might want to log this
+            return
+        
+        headers = response.get("payload", {}).get("headers", [])
+        detailed_messages_dict[request_id] = {
+            "id": response["id"],
+            "snippet": response.get("snippet", ""),
+            "threadId": response.get("threadId", ""),
+            "internalDate": int(response.get("internalDate", 0)),
+            "subject": get_header(headers, "Subject"),
+            "from": get_header(headers, "From"),
+            "date": get_header(headers, "Date")
+        }
+
+    batch = service.new_batch_http_request(callback=callback)
+    
+    for msg in messages_meta:
+        kwargs = {"userId": "me", "id": msg["id"], "format": format}
+        if metadata_headers:
+            kwargs["metadataHeaders"] = metadata_headers
+        batch.add(service.users().messages().get(**kwargs), request_id=msg["id"])
+    
+    batch.execute()
+
+    # Re-order results according to original messages_meta order
+    results = []
+    for msg in messages_meta:
+        if msg["id"] in detailed_messages_dict:
+            results.append(detailed_messages_dict[msg["id"]])
+    return results
+
 @app.get("/accounts/{account_id}/messages")
 async def list_messages(account_id: int, label: str = None, page_token: str = None, session: Session = Depends(get_session)):
     service = get_gmail_service(account_id, session)
@@ -221,19 +266,10 @@ async def list_messages(account_id: int, label: str = None, page_token: str = No
             kwargs["pageToken"] = page_token
         
         results = service.users().messages().list(**kwargs).execute()
-        messages = results.get("messages", [])
+        messages_meta = results.get("messages", [])
         next_page_token = results.get("nextPageToken")
         
-        # Optionally fetch snippet for each message
-        detailed_messages = []
-        for msg in messages:
-            m = service.users().messages().get(userId="me", id=msg["id"], format="minimal").execute()
-            detailed_messages.append({
-                "id": m["id"],
-                "snippet": m["snippet"],
-                "threadId": m["threadId"],
-                "internalDate": int(m["internalDate"])
-            })
+        detailed_messages = get_detailed_messages_batch(service, messages_meta, format="minimal")
         
         response_data = {
             "messages": detailed_messages,
@@ -243,12 +279,6 @@ async def list_messages(account_id: int, label: str = None, page_token: str = No
         return response_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-def get_header(headers, name):
-    for header in headers:
-        if header["name"].lower() == name.lower():
-            return header["value"]
-    return None
 
 @app.get("/accounts/{account_id}/search")
 async def search_messages(
@@ -277,25 +307,12 @@ async def search_messages(
         messages_meta = results.get("messages", [])
         next_page_token = results.get("nextPageToken")
         
-        detailed_messages = []
-        for msg in messages_meta:
-            m = service.users().messages().get(
-                userId="me", 
-                id=msg["id"], 
-                format="metadata", 
-                metadataHeaders=["Subject", "From", "Date"]
-            ).execute()
-            
-            headers = m.get("payload", {}).get("headers", [])
-            detailed_messages.append({
-                "id": m["id"],
-                "snippet": m["snippet"],
-                "threadId": m["threadId"],
-                "internalDate": int(m["internalDate"]),
-                "subject": get_header(headers, "Subject"),
-                "from": get_header(headers, "From"),
-                "date": get_header(headers, "Date")
-            })
+        detailed_messages = get_detailed_messages_batch(
+            service, 
+            messages_meta, 
+            format="metadata", 
+            metadata_headers=["Subject", "From", "Date"]
+        )
         
         return {
             "messages": detailed_messages,
@@ -379,18 +396,14 @@ async def unified_messages(label: str = None, session: Session = Depends(get_ses
                 kwargs["labelIds"] = [label]
 
             results = service.users().messages().list(**kwargs).execute()
-            messages = results.get("messages", [])
+            messages_meta = results.get("messages", [])
             
-            for msg in messages:
-                m = service.users().messages().get(userId="me", id=msg["id"], format="minimal").execute()
-                all_messages.append({
-                    "id": m["id"],
-                    "snippet": m["snippet"],
-                    "threadId": m["threadId"],
-                    "internalDate": int(m["internalDate"]),
-                    "accountEmail": account.email,
-                    "accountId": account.id
-                })
+            detailed_messages = get_detailed_messages_batch(service, messages_meta, format="minimal")
+            
+            for m in detailed_messages:
+                m["accountEmail"] = account.email
+                m["accountId"] = account.id
+                all_messages.append(m)
         except Exception:
             # For unified view, we might want to just skip failed accounts or log them
             continue

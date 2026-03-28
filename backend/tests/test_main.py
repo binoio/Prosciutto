@@ -43,6 +43,23 @@ def test_update_settings(client: TestClient):
     assert response.status_code == 200
     assert response.json() == {"message": "Settings updated"}
 
+class MockBatch:
+    def __init__(self, callback, responses):
+        self.callback = callback
+        self.responses = responses
+        self.added = []
+
+    def add(self, request, request_id):
+        self.added.append(request_id)
+
+    def execute(self):
+        for request_id in self.added:
+            response = self.responses.get(request_id)
+            if response:
+                self.callback(request_id, response, None)
+            else:
+                self.callback(request_id, None, Exception("Not found"))
+
 @patch("backend.main.build")
 @patch("backend.main.Credentials")
 def test_list_messages(mock_creds_class, mock_build, client: TestClient, session: Session):
@@ -59,14 +76,20 @@ def test_list_messages(mock_creds_class, mock_build, client: TestClient, session
     mock_service = MagicMock()
     mock_build.return_value = mock_service
     mock_service.users().messages().list().execute.return_value = {"messages": [{"id": "123"}]}
-    mock_service.users().messages().get().execute.return_value = {"id": "123", "snippet": "Hello", "threadId": "t1", "internalDate": "123456"}
+    
+    detail_response = {"id": "123", "snippet": "Hello", "threadId": "t1", "internalDate": "123456"}
+    
+    def new_batch_http_request(callback):
+        return MockBatch(callback, {"123": detail_response})
+    
+    mock_service.new_batch_http_request.side_effect = new_batch_http_request
     
     response = client.get(f"/accounts/{account.id}/messages")
     assert response.status_code == 200
     data = response.json()
     assert "messages" in data
+    assert len(data["messages"]) == 1
     assert data["messages"][0]["snippet"] == "Hello"
-
 
 @patch("backend.main.build")
 @patch("backend.main.Credentials")
@@ -112,7 +135,7 @@ def test_search_messages(mock_creds_class, mock_build, client: TestClient, sessi
     }
     
     # Mock detail result
-    mock_service.users().messages().get().execute.return_value = {
+    detail_response = {
         "id": "m1",
         "snippet": "Test search result",
         "threadId": "t1",
@@ -125,6 +148,11 @@ def test_search_messages(mock_creds_class, mock_build, client: TestClient, sessi
             ]
         }
     }
+    
+    def new_batch_http_request(callback):
+        return MockBatch(callback, {"m1": detail_response})
+    
+    mock_service.new_batch_http_request.side_effect = new_batch_http_request
     
     response = client.get(f"/accounts/{account.id}/search?q=test")
     assert response.status_code == 200
@@ -150,8 +178,14 @@ def test_unified_inbox(mock_creds_class, mock_build, client: TestClient, session
     mock_service = MagicMock()
     mock_build.return_value = mock_service
     mock_service.users().messages().list().execute.return_value = {"messages": [{"id": "m1"}]}
-    mock_service.users().messages().get().execute.return_value = {"id": "m1", "snippet": "Snip", "internalDate": "123456", "threadId": "t1"}
+    
+    detail_response = {"id": "m1", "snippet": "Snip", "internalDate": "123456", "threadId": "t1"}
+    
+    def new_batch_http_request(callback):
+        return MockBatch(callback, {"m1": detail_response})
+    
+    mock_service.new_batch_http_request.side_effect = new_batch_http_request
     
     response = client.get("/unified/messages")
     assert response.status_code == 200
-    assert len(response.json()) == 2
+    assert len(response.json()["messages"]) == 2
