@@ -14,10 +14,11 @@ echo -e "${BLUE}=======================================${NC}"
 function show_menu() {
     echo -e "\n${YELLOW}Please choose an action:${NC}"
     echo "1) Create GCP Project & Enable Gmail API (Local Dev)"
-    echo "2) Enable/Disable Gmail API only"
-    echo "3) Prepare for Cloud Run (Requires Billing)"
-    echo "4) Deploy Stack to Cloud Run"
-    echo "5) Teardown (Delete Project)"
+    echo "2) Configure Local OAuth Credentials (.env)"
+    echo "3) Enable/Disable Gmail API only"
+    echo "4) Prepare for Cloud Run (Requires Billing)"
+    echo "5) Deploy Stack to Cloud Run"
+    echo "6) Teardown (Delete Project)"
     echo "q) Quit"
     read -p "Action: " choice
 }
@@ -27,6 +28,27 @@ function check_gcloud() {
         echo -e "${RED}Error: gcloud CLI is not installed.${NC}"
         exit 1
     fi
+}
+
+function configure_local_env() {
+    echo -e "\n${BLUE}--- Local OAuth Configuration ---${NC}"
+    read -p "Enter Google Client ID: " GOOGLE_CLIENT_ID
+    read -p "Enter Google Client Secret: " GOOGLE_CLIENT_SECRET
+    
+    # Use current project ID if available
+    PROJECT_ID=$(gcloud config get-value project 2>/dev/null)
+    read -p "Enter Google Project ID (default: $PROJECT_ID): " ENTERED_PROJECT_ID
+    PROJECT_ID=${ENTERED_PROJECT_ID:-$PROJECT_ID}
+    
+    ENV_FILE="backend/.env"
+    mkdir -p "backend"
+    
+    echo -e "${GREEN}Writing configuration to $ENV_FILE...${NC}"
+    echo "GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID" > "$ENV_FILE"
+    echo "GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET" >> "$ENV_FILE"
+    echo "GOOGLE_PROJECT_ID=$PROJECT_ID" >> "$ENV_FILE"
+    
+    echo -e "${GREEN}Successfully configured $ENV_FILE.${NC}"
 }
 
 function create_project() {
@@ -42,6 +64,11 @@ function create_project() {
     echo "https://console.cloud.google.com/apis/credentials?project=$PROJECT_ID"
     echo "1. Create 'OAuth client ID' for 'Web application'."
     echo "2. Add Authorized Redirect URI: http://localhost:8000/auth/callback"
+
+    read -p "Do you want to configure your local .env file now? (y/n): " configure_now
+    if [ "$configure_now" == "y" ]; then
+        configure_local_env
+    fi
 }
 
 function prepare_cloud_run() {
@@ -105,10 +132,11 @@ while true; do
     show_menu
     case $choice in
         1) create_project ;;
-        2) toggle_gmail_api ;;
-        3) prepare_cloud_run ;;
-        4) deploy_stack ;;
-        5) teardown ;;
+        2) configure_local_env ;;
+        3) toggle_gmail_api ;;
+        4) prepare_cloud_run ;;
+        5) deploy_stack ;;
+        6) teardown ;;
         q) exit 0 ;;
         *) echo -e "${RED}Invalid choice${NC}" ;;
     esac

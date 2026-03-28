@@ -6,6 +6,11 @@ from slowapi.errors import RateLimitExceeded
 from contextlib import asynccontextmanager
 import os
 import json
+from dotenv import load_dotenv
+
+# Load .env file if it exists
+load_dotenv()
+
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
