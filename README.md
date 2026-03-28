@@ -27,7 +27,7 @@ Use the interactive script to set up your Google Cloud project and enable necess
 ./gcp_setup.sh
 ```
 
-Choose **Option 1** to create a project and enable APIs. Follow the instructions to create OAuth2 credentials in the Google Cloud Console.
+Choose **Option 1** to create a project and enable APIs. Follow the instructions to create OAuth2 credentials in the Google Cloud Console. Then, use **Option 2** to save your credentials to `.env`.
 
 ### 2. Local Setup
 
@@ -65,7 +65,7 @@ To deploy to Google Cloud Run, use the interactive script:
 ./gcp_setup.sh
 ```
 
-Choose **Option 3** for deployment.
+Choose **Option 5** for deployment (after running Option 4 to prepare).
 
 ## Testing
 
@@ -83,4 +83,4 @@ To delete the GCP project and all resources:
 ./gcp_setup.sh
 ```
 
-Choose **Option 4**.
+Choose **Option 6**.
