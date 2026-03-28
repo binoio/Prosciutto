@@ -74,20 +74,47 @@ def get_client_config():
 
 @app.get("/settings")
 async def get_settings(session: Session = Depends(get_session)):
-    settings = session.exec(select(Setting)).all()
-    return {s.key: s.value for s in settings}
+    settings_list = session.exec(select(Setting)).all()
+    settings_dict = {s.key: s.value for s in settings_list}
+    
+    # Check if set via environment variables
+    env_client_id = os.getenv("GOOGLE_CLIENT_ID")
+    env_client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+    
+    return {
+        "GOOGLE_CLIENT_ID": env_client_id or settings_dict.get("GOOGLE_CLIENT_ID", ""),
+        "GOOGLE_CLIENT_SECRET": env_client_secret or settings_dict.get("GOOGLE_CLIENT_SECRET", ""),
+        "is_client_id_env": env_client_id is not None,
+        "is_client_secret_env": env_client_secret is not None,
+        # Default appearance settings
+        "THEME": settings_dict.get("THEME", "automatic"),
+        "SHOW_DISCLOSURE_IF_SINGLE": settings_dict.get("SHOW_DISCLOSURE_IF_SINGLE", "false")
+    }
 
 @app.post("/settings")
 async def update_settings(settings: dict, session: Session = Depends(get_session)):
     for key, value in settings.items():
+        # Prevent updating env-locked settings
+        if key in ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"] and os.getenv(key):
+            continue
+            
         setting = session.exec(select(Setting).where(Setting.key == key)).first()
         if not setting:
-            setting = Setting(key=key, value=value)
+            setting = Setting(key=key, value=str(value))
         else:
-            setting.value = value
+            setting.value = str(value)
         session.add(setting)
     session.commit()
     return {"message": "Settings updated"}
+
+@app.delete("/accounts/{account_id}")
+async def delete_account(account_id: int, session: Session = Depends(get_session)):
+    account = session.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    session.delete(account)
+    session.commit()
+    return {"message": "Account deleted"}
 
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
