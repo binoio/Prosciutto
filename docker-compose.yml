@@ -1,11 +1,13 @@
 services:
   backend:
     build:
-      context: ./backend
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app
+      - ./backend:/app/backend
+      - ./frontend:/app/frontend
       - backend-data:/data
     environment:
       - DATABASE_URL=sqlite:////data/gmail_app.db
