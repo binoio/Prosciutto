@@ -17,8 +17,8 @@ from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from sqlmodel import Session, select
-from db import create_db_and_tables, get_session
-from models import Account, Setting
+from backend.db import create_db_and_tables, get_session
+from backend.models import Account, Setting
 from diskcache import Cache
 
 # Initialize Limiter
