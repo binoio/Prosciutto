@@ -98,6 +98,7 @@ async def get_settings(session: Session = Depends(get_session)):
         # Default appearance settings
         "THEME": settings_dict.get("THEME", "automatic"),
         "SHOW_DISCLOSURE_IF_SINGLE": settings_dict.get("SHOW_DISCLOSURE_IF_SINGLE", "false"),
+        "SHOW_STARRED": settings_dict.get("SHOW_STARRED", "false"),
         "COMPOSE_NEW_WINDOW": settings_dict.get("COMPOSE_NEW_WINDOW", "true")
     }
 
@@ -290,6 +291,27 @@ def get_detailed_messages_batch(service, messages_meta, format="metadata", metad
         if msg["id"] in detailed_messages_dict:
             results.append(detailed_messages_dict[msg["id"]])
     return results
+
+@app.get("/accounts/{account_id}/labels")
+async def list_labels(account_id: int, session: Session = Depends(get_session)):
+    service = get_gmail_service(account_id, session)
+    if not service:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    try:
+        results = service.users().labels().list(userId="me").execute()
+        labels = results.get("labels", [])
+        
+        # Filter for user-defined labels or interesting ones
+        user_labels = [
+            {"id": l["id"], "name": l["name"], "type": l["type"]} 
+            for l in labels 
+            if l["type"] == "user"
+        ]
+        
+        return user_labels
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/accounts/{account_id}/messages")
 async def list_messages(account_id: int, label: str = None, page_token: str = None, refresh: bool = False, session: Session = Depends(get_session)):
@@ -556,6 +578,53 @@ async def send_email(account_id: int, request: SendEmailRequest, session: Sessio
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.delete("/accounts/{account_id}/labels/{label_id}/empty")
+async def empty_label(account_id: int, label_id: str, session: Session = Depends(get_session)):
+    service = get_gmail_service(account_id, session)
+    if not service:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    try:
+        # Clear cache
+        cache.clear()
+        
+        # Get all message IDs in that label
+        # We can't use batchDelete for TRASH or SPAM if they're not trashed?
+        # Actually, for emptying Trash/Spam, we want to PERMANENTLY delete them.
+        
+        messages = []
+        next_page_token = None
+        while True:
+            kwargs = {"userId": "me", "labelIds": [label_id], "maxResults": 500}
+            if next_page_token:
+                kwargs["pageToken"] = next_page_token
+            
+            results = service.users().messages().list(**kwargs).execute()
+            messages.extend(results.get("messages", []))
+            next_page_token = results.get("nextPageToken")
+            if not next_page_token:
+                break
+            # Don't loop forever in case of huge mailbox
+            if len(messages) > 1000: break
+
+        if not messages:
+            return {"message": "Label is already empty"}
+            
+        ids = [m["id"] for m in messages]
+        
+        # Gmail API allows up to 1000 messages per batchDelete
+        for i in range(0, len(ids), 1000):
+            batch_ids = ids[i:i+1000]
+            service.users().messages().batchDelete(
+                userId="me",
+                body={"ids": batch_ids}
+            ).execute()
+            
+        return {"message": f"Emptied {len(ids)} messages from {label_id}"}
+    except Exception as e:
+        logger.error(f"Failed to empty {label_id} for account {account_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/unified/messages")
 async def unified_messages(label: str = None, refresh: bool = False, session: Session = Depends(get_session)):
     cache_key = f"unified_messages_{label}"
@@ -597,6 +666,21 @@ async def unified_messages(label: str = None, refresh: bool = False, session: Se
     response_data = {"messages": all_messages, "nextPageToken": None}
     cache.set(cache_key, response_data, expire=300)
     return response_data
+
+@app.delete("/unified/labels/{label_id}/empty")
+async def empty_unified_label(label_id: str, session: Session = Depends(get_session)):
+    accounts = session.exec(select(Account).where(Account.is_active)).all()
+    results = []
+    for account in accounts:
+        try:
+            res = await empty_label(account.id, label_id, session)
+            results.append({account.email: res["message"]})
+        except Exception as e:
+            results.append({account.email: f"Error: {str(e)}"})
+            
+    # Clear cache
+    cache.clear()
+    return {"results": results}
 
 if __name__ == "__main__":
     import uvicorn

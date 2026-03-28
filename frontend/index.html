@@ -23,7 +23,7 @@
             </div>
             <div id="accounts-SENT" class="account-subset"></div>
 
-            <div class="mailbox-item" onclick="loadMailbox('STARRED')">
+            <div id="mailbox-item-STARRED" class="mailbox-item" onclick="loadMailbox('STARRED')">
                 <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'STARRED')">▶</span>
                 <i class="fa-solid fa-star" style="margin-right: 8px;"></i> Starred
             </div>
@@ -41,11 +41,20 @@
             </div>
             <div id="accounts-TRASH" class="account-subset"></div>
 
+            <div class="mailbox-item" onclick="loadMailbox('SPAM')">
+                <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'SPAM')">▶</span>
+                <i class="fa-solid fa-circle-exclamation" style="margin-right: 8px;"></i> Spam
+            </div>
+            <div id="accounts-SPAM" class="account-subset"></div>
+
             <div class="mailbox-item" onclick="loadMailbox('')">
                 <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'ALL')">▶</span>
                 <i class="fa-solid fa-envelope-open-text" style="margin-right: 8px;"></i> All Mail
             </div>
             <div id="accounts-ALL" class="account-subset"></div>
+
+            <div style="margin-top: 20px; padding: 0 15px; font-weight: bold; color: var(--text-gray); font-size: 12px; text-transform: uppercase;">Labels</div>
+            <div id="labels-container"></div>
         </div>
     </div>
     <div id="main">
@@ -90,6 +99,10 @@
                             <option value="trash">Move to Trash</option>
                         </select>
                     </div>
+                </div>
+                <div id="mailbox-banner" style="display: none; background-color: var(--bg-light); border-bottom: 1px solid var(--border-color); padding: 10px 20px; align-items: center; justify-content: space-between;">
+                    <span id="banner-text">Messages in Trash will be automatically deleted after 30 days.</span>
+                    <button class="compose-btn" id="empty-mailbox-btn" style="width: auto; padding: 5px 15px; background-color: var(--text-gray);" onclick="emptyCurrentMailbox()">Empty Trash Now</button>
                 </div>
                 <div id="message-list">
                     <!-- Messages will be loaded here -->
@@ -166,6 +179,10 @@
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <input type="checkbox" id="setting-disclosure" style="width: auto;" onchange="saveAllSettings()">
                             <label for="setting-disclosure">Show disclosure triangles for single account</label>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+                            <input type="checkbox" id="setting-starred" style="width: auto;" onchange="saveAllSettings()">
+                            <label for="setting-starred">Show Starred mailbox</label>
                         </div>
                     </div>
 
@@ -285,16 +302,18 @@
             // Populate Appearance Settings
             document.getElementById('setting-theme').value = globalSettings.THEME || 'automatic';
             document.getElementById('setting-disclosure').checked = globalSettings.SHOW_DISCLOSURE_IF_SINGLE === 'true';
-            
-            // Populate Privacy Settings
-            document.getElementById('setting-remote-images').checked = globalSettings.LOAD_REMOTE_IMAGES === 'true';
+            document.getElementById('setting-starred').checked = globalSettings.SHOW_STARRED === 'true';
+
+            // Populate Privacy Settings            document.getElementById('setting-remote-images').checked = globalSettings.LOAD_REMOTE_IMAGES === 'true';
             
             applyTheme(globalSettings.THEME);
+            updateStarredMailboxVisibility();
         }
 
         async function saveAllSettings() {
             const theme = document.getElementById('setting-theme').value;
             const disclosure = document.getElementById('setting-disclosure').checked;
+            const starred = document.getElementById('setting-starred').checked;
             const remoteImages = document.getElementById('setting-remote-images').checked;
             const composeWindow = document.getElementById('setting-compose-window').checked;
             const clientId = document.getElementById('client-id').value;
@@ -303,6 +322,7 @@
             const data = {
                 THEME: theme,
                 SHOW_DISCLOSURE_IF_SINGLE: disclosure ? 'true' : 'false',
+                SHOW_STARRED: starred ? 'true' : 'false',
                 LOAD_REMOTE_IMAGES: remoteImages ? 'true' : 'false',
                 COMPOSE_NEW_WINDOW: composeWindow ? 'true' : 'false'
             };
@@ -326,10 +346,12 @@
             // but we might want to refresh some global state.
             globalSettings.THEME = theme;
             globalSettings.SHOW_DISCLOSURE_IF_SINGLE = data.SHOW_DISCLOSURE_IF_SINGLE;
+            globalSettings.SHOW_STARRED = data.SHOW_STARRED;
             globalSettings.LOAD_REMOTE_IMAGES = data.LOAD_REMOTE_IMAGES;
             globalSettings.COMPOSE_NEW_WINDOW = data.COMPOSE_NEW_WINDOW;
-            
+
             updateDisclosureTriangles();
+            updateStarredMailboxVisibility();
         }
 
         function applyTheme(theme) {
@@ -345,17 +367,8 @@
             const res = await fetch('/accounts');
             accounts = await res.json();
             
-            const select = document.getElementById('compose-from');
-            select.innerHTML = '';
-            accounts.forEach(acc => {
-                const opt = document.createElement('option');
-                opt.value = acc.id;
-                opt.innerText = acc.email;
-                select.appendChild(opt);
-            });
-            
             // Populate account subsets in sidebar
-            ['INBOX', 'SENT', 'STARRED', 'DRAFT', 'TRASH', 'ALL'].forEach(label => {
+            ['INBOX', 'SENT', 'STARRED', 'DRAFT', 'TRASH', 'SPAM', 'ALL'].forEach(label => {
                 const subset = document.getElementById(`accounts-${label}`);
                 if (!subset) return;
                 subset.innerHTML = '';
@@ -373,6 +386,7 @@
 
             updateDisclosureTriangles();
             renderAccountsInSettings();
+            await loadLabels();
 
             // Hide mailbox list and compose button if no accounts
             const mailboxList = document.getElementById('mailbox-list');
@@ -383,6 +397,53 @@
             } else {
                 mailboxList.style.display = 'block';
                 composeArea.style.display = 'block';
+            }
+        }
+
+        async function loadLabels() {
+            const container = document.getElementById('labels-container');
+            container.innerHTML = '';
+            
+            for (const acc of accounts) {
+                const accItem = document.createElement('div');
+                accItem.className = 'mailbox-item';
+                accItem.innerHTML = `
+                    <span class="disclosure-triangle visible" onclick="toggleDisclosure(event, 'labels-${acc.id}')">▶</span>
+                    <i class="fa-solid fa-folder" style="margin-right: 8px;"></i> ${acc.email}
+                `;
+                accItem.onclick = (e) => toggleDisclosure(e, `labels-${acc.id}`);
+                container.appendChild(accItem);
+
+                const subset = document.createElement('div');
+                subset.id = `accounts-labels-${acc.id}`;
+                subset.className = 'account-subset';
+                container.appendChild(subset);
+
+                try {
+                    const res = await fetch(`/accounts/${acc.id}/labels`);
+                    const labels = await res.json();
+                    
+                    if (labels.length === 0) {
+                        const empty = document.createElement('div');
+                        empty.className = 'account-subset-item';
+                        empty.innerText = 'No custom labels';
+                        empty.style.fontStyle = 'italic';
+                        subset.appendChild(empty);
+                    } else {
+                        labels.forEach(l => {
+                            const item = document.createElement('div');
+                            item.className = 'account-subset-item';
+                            item.innerText = l.name;
+                            item.onclick = (e) => {
+                                e.stopPropagation();
+                                loadAccountMailbox(acc.id, acc.email, l.id);
+                            };
+                            subset.appendChild(item);
+                        });
+                    }
+                } catch (e) {
+                    console.error(`Failed to load labels for ${acc.email}`, e);
+                }
             }
         }
 
@@ -397,6 +458,21 @@
                     t.classList.remove('visible');
                 }
             });
+        }
+
+        function updateStarredMailboxVisibility() {
+            const starredItem = document.getElementById('mailbox-item-STARRED');
+            const starredSubset = document.getElementById('accounts-STARRED');
+            const showStarred = globalSettings.SHOW_STARRED === 'true';
+            
+            if (showStarred) {
+                starredItem.style.display = 'flex';
+                // Only show subset if expanded? No, loadMailbox handles it.
+                // But we should follow existing visibility patterns.
+            } else {
+                starredItem.style.display = 'none';
+                starredSubset.classList.remove('visible');
+            }
         }
 
         function renderAccountsInSettings() {
@@ -465,9 +541,9 @@
                 document.getElementById('view-name').innerText = label === '' ? 'All Mail' : label.charAt(0) + label.slice(1).toLowerCase();
                 document.getElementById('search-input').value = '';
                 hideMessageDetail();
-                
-                // Update active state in sidebar
-                document.querySelectorAll('.mailbox-item').forEach(item => {
+                updateBanner(label);
+
+                // Update active state in sidebar                document.querySelectorAll('.mailbox-item').forEach(item => {
                     item.classList.remove('active');
                     const targetLabel = label === '' ? 'All Mail' : label;
                     if (item.innerText.toUpperCase().includes(targetLabel.toUpperCase())) {
@@ -498,6 +574,7 @@
                 document.getElementById('view-name').innerText = `${email} - ${label === '' ? 'All Mail' : label}`;
                 document.getElementById('search-input').value = '';
                 hideMessageDetail();
+                updateBanner(label);
             }
             
             let url = `/accounts/${accId}/messages?`;
@@ -511,6 +588,52 @@
 
             document.getElementById('load-more-btn').style.display = nextPageToken ? 'inline-block' : 'none';
             renderMessages(data.messages, append);
+        }
+
+        function updateBanner(label) {
+            const banner = document.getElementById('mailbox-banner');
+            const bannerText = document.getElementById('banner-text');
+            const emptyBtn = document.getElementById('empty-mailbox-btn');
+
+            if (label === 'TRASH') {
+                banner.style.display = 'flex';
+                bannerText.innerText = 'Messages in Trash will be automatically deleted after 30 days.';
+                emptyBtn.innerText = 'Empty Trash Now';
+                emptyBtn.style.display = 'inline-block';
+            } else if (label === 'SPAM') {
+                banner.style.display = 'flex';
+                bannerText.innerText = 'Messages in Spam will be automatically deleted after 30 days.';
+                emptyBtn.innerText = 'Empty Spam Now';
+                emptyBtn.style.display = 'inline-block';
+            } else {
+                banner.style.display = 'none';
+            }
+        }
+
+        async function emptyCurrentMailbox() {
+            const label = currentLabel;
+            if (label !== 'TRASH' && label !== 'SPAM') return;
+
+            if (!confirm(`Are you sure you want to permanently delete all messages in ${label.toLowerCase()}?`)) return;
+
+            let url = currentAccountId 
+                ? `/accounts/${currentAccountId}/labels/${label}/empty`
+                : `/unified/labels/${label}/empty`;
+
+            try {
+                const res = await fetch(url, { method: 'DELETE' });
+                const data = await res.json();
+                
+                // Refresh the view
+                if (currentAccountId) {
+                    loadAccountMailbox(currentAccountId, accounts.find(a => a.id === currentAccountId).email, label);
+                } else {
+                    loadMailbox(label);
+                }
+            } catch (e) {
+                console.error("Failed to empty mailbox", e);
+                alert("Failed to empty mailbox");
+            }
         }
 
         function loadMore() {
