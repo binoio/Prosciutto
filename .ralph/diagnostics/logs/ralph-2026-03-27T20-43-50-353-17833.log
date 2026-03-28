@@ -1,4 +1,0 @@
-2026-03-28T00:43:50.354921Z  INFO ralph: Creating scratchpad directory: /Users/mabino/Downloads/mebwhale/.ralph/agent
-2026-03-28T00:43:50.355418Z  INFO ralph: Spawning subprocess for TUI mode child_args=["-c", "ralph.yml", "run", "--rpc"]
-2026-03-28T00:43:50.355596Z  INFO ralph: TUI subprocess stderr redirected to log file log_file=/Users/mabino/Downloads/mebwhale/.ralph/diagnostics/logs/ralph-2026-03-27T20-43-50-355-17833.log
-2026-03-28T00:43:50.356005Z  INFO ralph: TUI running in subprocess RPC mode
