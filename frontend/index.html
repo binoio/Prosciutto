@@ -131,6 +131,24 @@
         #message-detail-panel.open { width: 60%; }
         #message-detail-panel.single-view { width: 100%; border-left: none; }
 
+        #message-list-header {
+            padding: 10px 20px;
+            border-bottom: 1px solid var(--border-gray);
+            display: flex;
+            align-items: center;
+            background: var(--bg-white);
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            height: 48px;
+            box-sizing: border-box;
+        }
+        .message-checkbox {
+            margin-right: 15px;
+            cursor: pointer;
+            width: 18px;
+            height: 18px;
+        }
         .message-item { 
             padding: 10px 20px; 
             border-bottom: 1px solid var(--border-gray); 
@@ -264,6 +282,12 @@
         </div>
         <div id="content">
             <div id="message-list-container">
+                <div id="message-list-header">
+                    <input type="checkbox" id="multi-select-checkbox" onclick="toggleAllMessages(this)">
+                    <div id="selection-info" style="margin-left: 20px; font-size: 14px; color: var(--text-gray); display: none;">
+                        <span id="selection-count">0</span> messages selected
+                    </div>
+                </div>
                 <div id="message-list">
                     <!-- Messages will be loaded here -->
                 </div>
@@ -699,6 +723,8 @@
             const list = document.getElementById('message-list');
             if (!append) {
                 list.innerHTML = '';
+                document.getElementById('multi-select-checkbox').checked = false;
+                document.getElementById('selection-info').style.display = 'none';
             }
             if (!messages || messages.length === 0) {
                 if (!append) list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-gray);">No messages found.</div>';
@@ -709,17 +735,43 @@
                 const item = document.createElement('div');
                 item.className = 'message-item';
                 item.id = `msg-${msg.id}`;
+                const accountId = msg.accountId || msg.account_id || currentAccountId;
                 item.innerHTML = `
+                    <input type="checkbox" class="message-checkbox" onclick="event.stopPropagation(); updateSelectionCount()" data-id="${msg.id}" data-accid="${accountId}">
                     <div class="message-sender">${msg.from || msg.accountEmail || ''}</div>
                     <div class="message-snippet"><b>${msg.subject || '(no subject)'}</b> - ${msg.snippet}</div>
                     <div class="message-date">${new Date(msg.internalDate).toLocaleDateString()}</div>
                 `;
-                item.onclick = () => showMessage(msg.id, msg.accountId || msg.account_id || currentAccountId);
+                item.onclick = () => showMessage(msg.id, accountId);
+                item.ondblclick = () => openMessageInNewWindow(msg.id, accountId);
+                list.appendChild(item);
+            });
+        }
                 item.ondblclick = () => openMessageInNewWindow(msg.id, msg.accountId || msg.account_id || currentAccountId);
                 list.appendChild(item);
             });
         }
 
+        function toggleAllMessages(checkbox) {
+            const checkboxes = document.querySelectorAll('.message-checkbox');
+            checkboxes.forEach(cb => cb.checked = checkbox.checked);
+            updateSelectionCount();
+        }
+
+        function updateSelectionCount() {
+            const checkboxes = document.querySelectorAll('.message-checkbox:checked');
+            const count = checkboxes.length;
+            const info = document.getElementById('selection-info');
+            const span = document.getElementById('selection-count');
+            
+            if (count > 0) {
+                info.style.display = 'flex';
+                span.innerText = count;
+            } else {
+                info.style.display = 'none';
+                document.getElementById('multi-select-checkbox').checked = false;
+            }
+        }
         async function showMessage(id, accId, isSingleView = false) {
             if (!accId) {
                 accId = accounts[0].id;
