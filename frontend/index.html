@@ -284,8 +284,15 @@
             <div id="message-list-container">
                 <div id="message-list-header">
                     <input type="checkbox" id="multi-select-checkbox" onclick="toggleAllMessages(this)">
-                    <div id="selection-info" style="margin-left: 20px; font-size: 14px; color: var(--text-gray); display: none;">
+                    <div id="selection-info" style="margin-left: 20px; font-size: 14px; color: var(--text-gray); display: none; align-items: center; gap: 20px;">
                         <span id="selection-count">0</span> messages selected
+                        <select id="action-dropdown" onchange="performBatchAction(this.value)" style="padding: 5px 10px; border-radius: 4px; border: 1px solid var(--border-gray); background: var(--bg-white); cursor: pointer;">
+                            <option value="">Actions...</option>
+                            <option value="mark-read">Mark as Read</option>
+                            <option value="mark-unread">Mark as Unread</option>
+                            <option value="archive">Archive</option>
+                            <option value="trash">Move to Trash</option>
+                        </select>
                     </div>
                 </div>
                 <div id="message-list">
@@ -771,6 +778,53 @@
                 info.style.display = 'none';
                 document.getElementById('multi-select-checkbox').checked = false;
             }
+        }
+
+        async function performBatchAction(action) {
+            if (!action) return;
+            const checkboxes = document.querySelectorAll('.message-checkbox:checked');
+            const messageIdsByAccount = {};
+            
+            checkboxes.forEach(cb => {
+                const accId = cb.getAttribute('data-accid');
+                const msgId = cb.getAttribute('data-id');
+                if (!messageIdsByAccount[accId]) messageIdsByAccount[accId] = [];
+                messageIdsByAccount[accId].push(msgId);
+            });
+            
+            let addLabelIds = [];
+            let removeLabelIds = [];
+            
+            if (action === 'mark-read') removeLabelIds.push('UNREAD');
+            else if (action === 'mark-unread') addLabelIds.push('UNREAD');
+            else if (action === 'archive') removeLabelIds.push('INBOX');
+            else if (action === 'trash') {
+                addLabelIds.push('TRASH');
+                removeLabelIds.push('INBOX');
+            }
+            
+            for (const accId in messageIdsByAccount) {
+                const ids = messageIdsByAccount[accId];
+                await fetch(`/accounts/${accId}/messages/batch-modify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ids: ids,
+                        addLabelIds: addLabelIds,
+                        removeLabelIds: removeLabelIds
+                    })
+                });
+            }
+            
+            // Reload current view
+            if (currentLabel === 'SEARCH') performSearch();
+            else if (currentAccountId === null) loadMailbox(currentLabel);
+            else {
+                const acc = accounts.find(a => a.id == currentAccountId);
+                loadAccountMailbox(currentAccountId, acc ? acc.email : '', currentLabel);
+            }
+            
+            document.getElementById('action-dropdown').value = '';
         }
         async function showMessage(id, accId, isSingleView = false) {
             if (!accId) {
