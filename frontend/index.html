@@ -186,31 +186,6 @@
         </div>
     </div>
 
-    <div id="composer" class="composer-overlay">
-        <div class="composer-header">
-            <span>New Message</span>
-            <span style="cursor: pointer;" onclick="hideComposer()">✖</span>
-        </div>
-        <div class="composer-body">
-            <div class="form-group">
-                <select id="compose-from"></select>
-            </div>
-            <div class="form-group">
-                <input type="text" id="compose-to" placeholder="To">
-            </div>
-            <div class="form-group">
-                <input type="text" id="compose-subject" placeholder="Subject">
-            </div>
-            <div class="form-group">
-                <textarea id="compose-body" placeholder="Body"></textarea>
-            </div>
-            <input type="hidden" id="compose-thread-id">
-            <input type="hidden" id="compose-in-reply-to">
-            <input type="hidden" id="compose-references">
-            <button class="compose-btn" style="width: 100px; align-self: flex-start;" onclick="sendEmail()">Send</button>
-        </div>
-    </div>
-
     <div id="first-run-prompt">
         <div class="prompt-card">
             <h2>Welcome to Prosciutto</h2>
@@ -1078,40 +1053,67 @@
             document.querySelectorAll('.message-item').forEach(item => item.classList.remove('selected'));
         }
 
-        function showComposer() {
-            document.getElementById('composer').style.display = 'flex';
-        }
-
-        function hideComposer() {
-            document.getElementById('composer').style.display = 'none';
-        }
-
-        async function sendEmail() {
-            const accId = document.getElementById('compose-from').value;
-            const data = {
-                to: document.getElementById('compose-to').value,
-                subject: document.getElementById('compose-subject').value,
-                body: document.getElementById('compose-body').value,
-                threadId: document.getElementById('compose-thread-id').value || null,
-                inReplyTo: document.getElementById('compose-in-reply-to').value || null,
-                references: document.getElementById('compose-references').value || null
-            };
-            const res = await fetch(`/accounts/${accId}/send`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-            const result = await res.json();
-            alert(result.message);
-            hideComposer();
+        function renderNewComposerInPanel(accId) {
+            if (!accId && accounts.length > 0) accId = accounts[0].id;
             
-            // Clear fields
-            document.getElementById('compose-to').value = '';
-            document.getElementById('compose-subject').value = '';
-            document.getElementById('compose-body').value = '';
-            document.getElementById('compose-thread-id').value = '';
-            document.getElementById('compose-in-reply-to').value = '';
-            document.getElementById('compose-references').value = '';
+            const panel = document.getElementById('message-detail-panel');
+            panel.classList.add('open');
+            
+            panel.innerHTML = `
+                <div class="composer-in-panel" style="display: flex; flex-direction: column; height: 100%;">
+                    <div class="composer-header" style="background: none; color: var(--text-dark); border-bottom: 1px solid var(--border-gray); border-radius: 0; padding: 20px;">
+                        <span style="font-size: 18px; font-weight: bold;">New Message</span>
+                        <span style="cursor: pointer;" onclick="hideMessageDetail()">✖</span>
+                    </div>
+                    <div class="composer-body" style="padding: 20px; flex: 1; display: flex; flex-direction: column; overflow-y: auto;">
+                        <div class="form-group">
+                            <label>From</label>
+                            <select id="panel-compose-from"></select>
+                        </div>
+                        <div class="form-group">
+                            <label>To</label>
+                            <input type="text" id="panel-compose-to" placeholder="To" value="">
+                        </div>
+                        <div class="form-group">
+                            <label>Subject</label>
+                            <input type="text" id="panel-compose-subject" placeholder="Subject" value="">
+                        </div>
+                        <div class="form-group" style="flex: 1; display: flex; flex-direction: column; border: none;">
+                            <textarea id="panel-compose-body" placeholder="Body" style="flex: 1; min-height: 300px; border: 1px solid var(--border-gray); padding: 10px; border-radius: 4px;"></textarea>
+                        </div>
+                        <input type="hidden" id="panel-compose-thread-id" value="">
+                        <input type="hidden" id="panel-compose-in-reply-to" value="">
+                        <input type="hidden" id="panel-compose-references" value="">
+                        <div style="display: flex; gap: 10px; margin-top: 20px; padding-bottom: 20px;">
+                            <button class="compose-btn" style="width: 120px;" onclick="sendEmailFromPanel(event, ${accId})">Send</button>
+                            <button class="compose-btn" style="width: 120px; background: var(--bg-light-gray);" onclick="hideMessageDetail()">Discard</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Populate "From" dropdown
+            const select = document.getElementById('panel-compose-from');
+            accounts.forEach(acc => {
+                const opt = document.createElement('option');
+                opt.value = acc.id;
+                opt.innerText = acc.email;
+                if (acc.id == accId) opt.selected = true;
+                select.appendChild(opt);
+            });
+
+            document.getElementById('panel-compose-to').focus();
+        }
+
+        function showComposer() {
+            const isNewWindow = globalSettings.COMPOSE_NEW_WINDOW !== 'false';
+            if (isNewWindow) {
+                const accId = currentAccountId || (accounts.length > 0 ? accounts[0].id : '');
+                const url = `?compose=true&accountId=${accId}`;
+                window.open(url, '_blank', 'width=800,height=700');
+            } else {
+                renderNewComposerInPanel(currentAccountId);
+            }
         }
 
         function addAccount() {
