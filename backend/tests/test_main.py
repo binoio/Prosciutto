@@ -33,6 +33,11 @@ def test_root(client: TestClient):
     assert response.status_code == 200
     assert "html" in response.headers["content-type"]
 
+def test_static_css(client: TestClient):
+    response = client.get("/styles/styles.css")
+    assert response.status_code == 200
+    assert "text/css" in response.headers["content-type"]
+
 def test_list_accounts_empty(client: TestClient):
     response = client.get("/accounts")
     assert response.status_code == 200

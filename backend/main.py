@@ -135,6 +135,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 async def root(request: Request):
     return FileResponse(os.path.join(BASE_DIR, "../frontend/index.html"))
 
+app.mount("/styles", StaticFiles(directory=os.path.join(BASE_DIR, "../frontend/styles")), name="styles")
+
 import secrets
 
 @app.get("/auth/login")

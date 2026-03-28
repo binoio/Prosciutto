@@ -811,9 +811,9 @@
                 panel.innerHTML = `
                     <div class="detail-header">
                         <div class="panel-actions" style="display: flex; gap: 10px; margin-bottom: 15px; align-items: center;">
-                            <button class="action-btn" onclick="replyMessage('${msg.id}', ${accId})" title="Reply"><i class="fa-solid fa-reply"></i></button>
-                            <button class="action-btn" onclick="replyAllMessage('${msg.id}', ${accId})" title="Reply All"><i class="fa-solid fa-reply-all"></i></button>
-                            <button class="action-btn" onclick="forwardMessage('${msg.id}', ${accId})" title="Forward"><i class="fa-solid fa-share"></i></button>
+                            <button class="action-btn" onclick="renderComposerInPanel('${msg.id}', ${accId}, 'reply')" title="Reply"><i class="fa-solid fa-reply"></i></button>
+                            <button class="action-btn" onclick="renderComposerInPanel('${msg.id}', ${accId}, 'replyAll')" title="Reply All"><i class="fa-solid fa-reply-all"></i></button>
+                            <button class="action-btn" onclick="renderComposerInPanel('${msg.id}', ${accId}, 'forward')" title="Forward"><i class="fa-solid fa-share"></i></button>
                             <div style="flex: 1;"></div>
                             <button class="action-btn" onclick="archiveMessage('${msg.id}', ${accId})" title="Archive"><i class="fa-solid fa-archive"></i></button>
                             <button class="action-btn" onclick="trashMessage('${msg.id}', ${accId})" title="Trash"><i class="fa-solid fa-trash"></i></button>
@@ -882,71 +882,153 @@
             }
         }
 
-        function replyMessage(id, accId) {
+        function renderComposerInPanel(id, accId, action) {
             const panel = document.getElementById('message-detail-panel');
             const msg = JSON.parse(panel.dataset.currentMessage);
+            const isSingleView = panel.classList.contains('single-view');
             
-            showComposer();
-            document.getElementById('compose-from').value = accId;
-            document.getElementById('compose-to').value = msg.from;
-            document.getElementById('compose-subject').value = msg.subject.toLowerCase().startsWith('re:') ? msg.subject : `Re: ${msg.subject}`;
-            
-            const quote = `\n\nOn ${msg.date}, ${msg.from} wrote:\n> ${msg.body.replace(/\n/g, '\n> ')}`;
-            document.getElementById('compose-body').value = quote;
-            document.getElementById('compose-body').focus();
-            document.getElementById('compose-body').setSelectionRange(0, 0);
+            let to = '';
+            let subject = '';
+            let body = '';
+            let threadId = '';
+            let inReplyTo = '';
+            let references = '';
 
-            document.getElementById('compose-thread-id').value = msg.threadId;
-            document.getElementById('compose-in-reply-to').value = msg.messageId;
-            document.getElementById('compose-references').value = (msg.references ? msg.references + " " : "") + msg.messageId;
+            const dateStr = new Date(msg.internalDate).toLocaleString();
+
+            if (action === 'reply') {
+                to = msg.from;
+                subject = msg.subject.toLowerCase().startsWith('re:') ? msg.subject : `Re: ${msg.subject}`;
+                body = `\n\nOn ${dateStr}, ${msg.from} wrote:\n> ${msg.body.replace(/\n/g, '\n> ')}`;
+                threadId = msg.threadId;
+                inReplyTo = msg.messageId;
+                references = (msg.references ? msg.references + " " : "") + msg.messageId;
+            } else if (action === 'replyAll') {
+                to = [msg.from, msg.to, msg.cc].filter(Boolean).join(', ');
+                const currentAccount = accounts.find(a => a.id == accId);
+                if (currentAccount) {
+                    to = to.split(', ').filter(email => !email.includes(currentAccount.email)).join(', ');
+                }
+                subject = msg.subject.toLowerCase().startsWith('re:') ? msg.subject : `Re: ${msg.subject}`;
+                body = `\n\nOn ${dateStr}, ${msg.from} wrote:\n> ${msg.body.replace(/\n/g, '\n> ')}`;
+                threadId = msg.threadId;
+                inReplyTo = msg.messageId;
+                references = (msg.references ? msg.references + " " : "") + msg.messageId;
+            } else if (action === 'forward') {
+                to = '';
+                subject = msg.subject.toLowerCase().startsWith('fwd:') ? msg.subject : `Fwd: ${msg.subject}`;
+                body = `\n\n---------- Forwarded message ----------\nFrom: ${msg.from}\nDate: ${dateStr}\nSubject: ${msg.subject}\nTo: ${msg.to}\n\n${msg.body}`;
+                threadId = '';
+                inReplyTo = '';
+                references = '';
+            }
+
+            panel.innerHTML = `
+                <div class="composer-in-panel" style="display: flex; flex-direction: column; height: 100%;">
+                    <div class="composer-header" style="background: none; color: var(--text-dark); border-bottom: 1px solid var(--border-gray); border-radius: 0; padding: 20px;">
+                        <span style="font-size: 18px; font-weight: bold;">${action.charAt(0).toUpperCase() + action.slice(1).replace(/([A-Z])/g, ' $1')}</span>
+                        <span style="cursor: pointer;" onclick="showMessage('${id}', ${accId}, ${isSingleView})">✖</span>
+                    </div>
+                    <div class="composer-body" style="padding: 20px; flex: 1; display: flex; flex-direction: column; overflow-y: auto;">
+                        <div class="form-group">
+                            <label>From</label>
+                            <select id="panel-compose-from"></select>
+                        </div>
+                        <div class="form-group">
+                            <label>To</label>
+                            <input type="text" id="panel-compose-to" placeholder="To" value="${to.replace(/"/g, '&quot;')}">
+                        </div>
+                        <div class="form-group">
+                            <label>Subject</label>
+                            <input type="text" id="panel-compose-subject" placeholder="Subject" value="${subject.replace(/"/g, '&quot;')}">
+                        </div>
+                        <div class="form-group" style="flex: 1; display: flex; flex-direction: column; border: none;">
+                            <textarea id="panel-compose-body" placeholder="Body" style="flex: 1; min-height: 300px; border: 1px solid var(--border-gray); padding: 10px; border-radius: 4px;">${body}</textarea>
+                        </div>
+                        <input type="hidden" id="panel-compose-thread-id" value="${threadId}">
+                        <input type="hidden" id="panel-compose-in-reply-to" value="${inReplyTo}">
+                        <input type="hidden" id="panel-compose-references" value="${references}">
+                        <div style="display: flex; gap: 10px; margin-top: 20px; padding-bottom: 20px;">
+                            <button class="compose-btn" style="width: 120px;" onclick="sendEmailFromPanel(event, ${accId})">Send</button>
+                            <button class="compose-btn" style="width: 120px; background: var(--bg-light-gray);" onclick="showMessage('${id}', ${accId}, ${isSingleView})">Discard</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Populate "From" dropdown
+            const select = document.getElementById('panel-compose-from');
+            accounts.forEach(acc => {
+                const opt = document.createElement('option');
+                opt.value = acc.id;
+                opt.innerText = acc.email;
+                if (acc.id == accId) opt.selected = true;
+                select.appendChild(opt);
+            });
+
+            // Focus and position cursor
+            const textArea = document.getElementById('panel-compose-body');
+            textArea.focus();
+            textArea.setSelectionRange(0, 0);
+        }
+
+        async function sendEmailFromPanel(event, accId) {
+            const fromAccId = document.getElementById('panel-compose-from').value;
+            const data = {
+                to: document.getElementById('panel-compose-to').value,
+                subject: document.getElementById('panel-compose-subject').value,
+                body: document.getElementById('panel-compose-body').value,
+                threadId: document.getElementById('panel-compose-thread-id').value || null,
+                inReplyTo: document.getElementById('panel-compose-in-reply-to').value || null,
+                references: document.getElementById('panel-compose-references').value || null
+            };
+            
+            const btn = event.target;
+            const originalText = btn.innerText;
+            btn.innerText = 'Sending...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(`/accounts/${fromAccId}/send`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await res.json();
+                
+                if (res.ok) {
+                    alert(result.message);
+                    const panel = document.getElementById('message-detail-panel');
+                    if (panel.classList.contains('single-view')) {
+                        const msg = JSON.parse(panel.dataset.currentMessage);
+                        showMessage(msg.id, accId, true);
+                    } else {
+                        hideMessageDetail();
+                        refreshMailbox();
+                    }
+                } else {
+                    alert("Error sending email: " + (result.detail || "Unknown error"));
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                console.error(err);
+                alert("An error occurred while sending the email");
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        function replyMessage(id, accId) {
+            renderComposerInPanel(id, accId, 'reply');
         }
 
         function replyAllMessage(id, accId) {
-            const panel = document.getElementById('message-detail-panel');
-            const msg = JSON.parse(panel.dataset.currentMessage);
-            
-            showComposer();
-            document.getElementById('compose-from').value = accId;
-            
-            // Extract all recipients (simplified)
-            let to = [msg.from, msg.to, msg.cc].filter(Boolean).join(', ');
-            // Remove current account email from recipients if present
-            const currentAccount = accounts.find(a => a.id == accId);
-            if (currentAccount) {
-                to = to.split(', ').filter(email => !email.includes(currentAccount.email)).join(', ');
-            }
-            
-            document.getElementById('compose-to').value = to;
-            document.getElementById('compose-subject').value = msg.subject.toLowerCase().startsWith('re:') ? msg.subject : `Re: ${msg.subject}`;
-            
-            const quote = `\n\nOn ${msg.date}, ${msg.from} wrote:\n> ${msg.body.replace(/\n/g, '\n> ')}`;
-            document.getElementById('compose-body').value = quote;
-            document.getElementById('compose-body').focus();
-            document.getElementById('compose-body').setSelectionRange(0, 0);
-
-            document.getElementById('compose-thread-id').value = msg.threadId;
-            document.getElementById('compose-in-reply-to').value = msg.messageId;
-            document.getElementById('compose-references').value = (msg.references ? msg.references + " " : "") + msg.messageId;
+            renderComposerInPanel(id, accId, 'replyAll');
         }
 
         function forwardMessage(id, accId) {
-            const panel = document.getElementById('message-detail-panel');
-            const msg = JSON.parse(panel.dataset.currentMessage);
-            
-            showComposer();
-            document.getElementById('compose-from').value = accId;
-            document.getElementById('compose-to').value = '';
-            document.getElementById('compose-subject').value = msg.subject.toLowerCase().startsWith('fwd:') ? msg.subject : `Fwd: ${msg.subject}`;
-            
-            const quote = `\n\n---------- Forwarded message ----------\nFrom: ${msg.from}\nDate: ${msg.date}\nSubject: ${msg.subject}\nTo: ${msg.to}\n\n${msg.body}`;
-            document.getElementById('compose-body').value = quote;
-            document.getElementById('compose-body').focus();
-            document.getElementById('compose-body').setSelectionRange(0, 0);
-
-            // Forwarding doesn't strictly need thread threading but it's often done
-            document.getElementById('compose-thread-id').value = '';
-            document.getElementById('compose-in-reply-to').value = '';
-            document.getElementById('compose-references').value = '';
+            renderComposerInPanel(id, accId, 'forward');
         }
 
         async function archiveMessage(id, accId) {

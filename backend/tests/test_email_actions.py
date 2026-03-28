@@ -110,3 +110,39 @@ def test_send_email_with_threading(mock_creds_class, mock_build, client: TestCli
     raw_msg = base64.urlsafe_b64decode(sent_body['raw']).decode()
     assert "In-Reply-To: <msg-id-123@google.com>" in raw_msg
     assert "References: <ref-id-000@google.com> <msg-id-123@google.com>" in raw_msg
+
+@patch("backend.main.build")
+@patch("backend.main.Credentials")
+def test_reply_all_threading(mock_creds_class, mock_build, client: TestClient, session: Session):
+    account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
+    session.add(account)
+    session.commit()
+    
+    mock_creds = MagicMock()
+    mock_creds.expired = False
+    mock_creds_class.from_authorized_user_info.return_value = mock_creds
+    
+    mock_service = MagicMock()
+    mock_build.return_value = mock_service
+    mock_service.users().messages().send().execute.return_value = {"id": "sent789", "threadId": "thread456"}
+    
+    # Simulate a reply-all payload
+    payload = {
+        "to": "sender@example.com, cc@example.com",
+        "subject": "Re: Test Subject",
+        "body": "Replying to all",
+        "threadId": "thread456",
+        "inReplyTo": "<msg-id-123@google.com>",
+        "references": "<ref-id-000@google.com> <msg-id-123@google.com>"
+    }
+    
+    response = client.post(f"/accounts/{account.id}/send", json=payload)
+    assert response.status_code == 200
+    
+    _, kwargs = mock_service.users.return_value.messages.return_value.send.call_args
+    sent_body = kwargs['body']
+    raw_msg = base64.urlsafe_b64decode(sent_body['raw']).decode()
+    
+    assert "to: sender@example.com, cc@example.com" in raw_msg.lower()
+    assert "in-reply-to: <msg-id-123@google.com>" in raw_msg.lower()
+    assert "references: <ref-id-000@google.com> <msg-id-123@google.com>" in raw_msg.lower()
