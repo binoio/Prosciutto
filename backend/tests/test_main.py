@@ -1,4 +1,5 @@
 import pytest
+import os
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 from backend.main import app, get_session
@@ -6,15 +7,17 @@ from backend.models import Account, Setting
 from sqlmodel import Session, SQLModel, create_engine
 from sqlmodel.pool import StaticPool
 
-# Setup in-memory SQLite for testing
-engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-
 @pytest.fixture(name="session")
 def session_fixture():
+    db_file = "test.db"
+    if os.path.exists(db_file):
+        os.remove(db_file)
+    engine = create_engine(f"sqlite:///{db_file}")
     SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
         yield session
-    SQLModel.metadata.drop_all(engine)
+    if os.path.exists(db_file):
+        os.remove(db_file)
 
 @pytest.fixture(name="client")
 def client_fixture(session: Session):
@@ -60,7 +63,10 @@ def test_list_messages(mock_creds_class, mock_build, client: TestClient, session
     
     response = client.get(f"/accounts/{account.id}/messages")
     assert response.status_code == 200
-    assert response.json()[0]["snippet"] == "Hello"
+    data = response.json()
+    assert "messages" in data
+    assert data["messages"][0]["snippet"] == "Hello"
+
 
 @patch("backend.main.build")
 @patch("backend.main.Credentials")
@@ -84,6 +90,49 @@ def test_send_email(mock_creds_class, mock_build, client: TestClient, session: S
     })
     assert response.status_code == 200
     assert response.json()["message"] == "Email sent"
+
+@patch("backend.main.build")
+@patch("backend.main.Credentials")
+def test_search_messages(mock_creds_class, mock_build, client: TestClient, session: Session):
+    account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
+    session.add(account)
+    session.commit()
+    
+    mock_creds = MagicMock()
+    mock_creds.expired = False
+    mock_creds_class.from_authorized_user_info.return_value = mock_creds
+    
+    mock_service = MagicMock()
+    mock_build.return_value = mock_service
+    
+    # Mock search result
+    mock_service.users().messages().list().execute.return_value = {
+        "messages": [{"id": "m1", "threadId": "t1"}],
+        "nextPageToken": "token123"
+    }
+    
+    # Mock detail result
+    mock_service.users().messages().get().execute.return_value = {
+        "id": "m1",
+        "snippet": "Test search result",
+        "threadId": "t1",
+        "internalDate": "123456789",
+        "payload": {
+            "headers": [
+                {"name": "Subject", "value": "Found it"},
+                {"name": "From", "value": "sender@example.com"},
+                {"name": "Date", "value": "Mon, 1 Jan 2024 10:00:00 +0000"}
+            ]
+        }
+    }
+    
+    response = client.get(f"/accounts/{account.id}/search?q=test")
+    assert response.status_code == 200
+    data = response.json()
+    assert "messages" in data
+    assert len(data["messages"]) == 1
+    assert data["messages"][0]["subject"] == "Found it"
+    assert data["nextPageToken"] == "token123"
 
 @patch("backend.main.build")
 @patch("backend.main.Credentials")

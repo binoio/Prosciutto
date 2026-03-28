@@ -19,9 +19,13 @@ from googleapiclient.discovery import build
 from sqlmodel import Session, select
 from db import create_db_and_tables, get_session
 from models import Account, Setting
+from diskcache import Cache
 
 # Initialize Limiter
 limiter = Limiter(key_func=get_remote_address)
+
+# Initialize Cache
+cache = Cache(".cache_dir")
 
 # Define Scopes
 SCOPES = [
@@ -35,7 +39,8 @@ SCOPES = [
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Setup database or other resources if needed
-    create_db_and_tables()
+    if not os.getenv("TESTING"):
+        create_db_and_tables()
     yield
     # Cleanup
 
@@ -198,18 +203,26 @@ def get_gmail_service(account_id: int, session: Session):
     return build("gmail", "v1", credentials=creds)
 
 @app.get("/accounts/{account_id}/messages")
-async def list_messages(account_id: int, label: str = None, session: Session = Depends(get_session)):
+async def list_messages(account_id: int, label: str = None, page_token: str = None, session: Session = Depends(get_session)):
     service = get_gmail_service(account_id, session)
     if not service:
         raise HTTPException(status_code=404, detail="Account not found")
     
+    cache_key = f"messages_{account_id}_{label}_{page_token}"
+    cached_result = cache.get(cache_key)
+    if cached_result:
+        return cached_result
+
     try:
         kwargs = {"userId": "me", "maxResults": 20}
         if label:
             kwargs["labelIds"] = [label]
+        if page_token:
+            kwargs["pageToken"] = page_token
         
         results = service.users().messages().list(**kwargs).execute()
         messages = results.get("messages", [])
+        next_page_token = results.get("nextPageToken")
         
         # Optionally fetch snippet for each message
         detailed_messages = []
@@ -222,9 +235,83 @@ async def list_messages(account_id: int, label: str = None, session: Session = D
                 "internalDate": int(m["internalDate"])
             })
         
-        return detailed_messages
+        response_data = {
+            "messages": detailed_messages,
+            "nextPageToken": next_page_token
+        }
+        cache.set(cache_key, response_data, expire=300)
+        return response_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+def get_header(headers, name):
+    for header in headers:
+        if header["name"].lower() == name.lower():
+            return header["value"]
+    return None
+
+@app.get("/accounts/{account_id}/search")
+async def search_messages(
+    account_id: int, 
+    q: str = None, 
+    page_token: str = None, 
+    max_results: int = 20, 
+    session: Session = Depends(get_session)
+):
+    service = get_gmail_service(account_id, session)
+    if not service:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    try:
+        kwargs = {
+            "userId": "me", 
+            "maxResults": max_results,
+            "fields": "messages(id,threadId),nextPageToken"
+        }
+        if q:
+            kwargs["q"] = q
+        if page_token:
+            kwargs["pageToken"] = page_token
+        
+        results = service.users().messages().list(**kwargs).execute()
+        messages_meta = results.get("messages", [])
+        next_page_token = results.get("nextPageToken")
+        
+        detailed_messages = []
+        for msg in messages_meta:
+            m = service.users().messages().get(
+                userId="me", 
+                id=msg["id"], 
+                format="metadata", 
+                metadataHeaders=["Subject", "From", "Date"]
+            ).execute()
+            
+            headers = m.get("payload", {}).get("headers", [])
+            detailed_messages.append({
+                "id": m["id"],
+                "snippet": m["snippet"],
+                "threadId": m["threadId"],
+                "internalDate": int(m["internalDate"]),
+                "subject": get_header(headers, "Subject"),
+                "from": get_header(headers, "From"),
+                "date": get_header(headers, "Date")
+            })
+        
+        return {
+            "messages": detailed_messages,
+            "nextPageToken": next_page_token
+        }
+    except Exception as e:
+        # Check for common Gmail API errors
+        error_msg = str(e)
+        if "rateLimitExceeded" in error_msg:
+            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+        elif "insufficientPermissions" in error_msg:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        elif "invalidArgument" in error_msg or "400" in error_msg:
+            raise HTTPException(status_code=400, detail="Invalid query syntax")
+        
+        raise HTTPException(status_code=500, detail=error_msg)
 
 @app.get("/accounts/{account_id}/messages/{message_id}")
 async def get_message(account_id: int, message_id: str, session: Session = Depends(get_session)):
@@ -271,6 +358,11 @@ async def send_email(account_id: int, request: SendEmailRequest, session: Sessio
 
 @app.get("/unified/messages")
 async def unified_messages(label: str = None, session: Session = Depends(get_session)):
+    cache_key = f"unified_messages_{label}"
+    cached_result = cache.get(cache_key)
+    if cached_result:
+        return cached_result
+
     accounts = session.exec(select(Account).where(Account.is_active)).all()
     
     all_messages = []
@@ -305,7 +397,9 @@ async def unified_messages(label: str = None, session: Session = Depends(get_ses
     
     # Sort by date descending
     all_messages.sort(key=lambda x: x["internalDate"], reverse=True)
-    return all_messages
+    response_data = {"messages": all_messages, "nextPageToken": None}
+    cache.set(cache_key, response_data, expire=300)
+    return response_data
 
 if __name__ == "__main__":
     import uvicorn

@@ -5,7 +5,7 @@ import json
 class Account(SQLModel, table=True):
     __table_args__ = {"extend_existing": True}
     id: Optional[int] = Field(default=None, primary_key=True)
-    email: str = Field(index=True, unique=True)
+    email: str = Field(unique=True)
     # Storing credentials as JSON string for simplicity, or we could use another table
     # Google API OAuth2 credentials (access_token, refresh_token, etc.)
     credentials_json: str
@@ -14,5 +14,5 @@ class Account(SQLModel, table=True):
 class Setting(SQLModel, table=True):
     __table_args__ = {"extend_existing": True}
     id: Optional[int] = Field(default=None, primary_key=True)
-    key: str = Field(index=True, unique=True)
+    key: str = Field(unique=True)
     value: str
