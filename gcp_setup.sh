@@ -34,6 +34,16 @@ function create_project() {
     gcloud projects create "$PROJECT_ID"
     gcloud config set project "$PROJECT_ID"
     
+    echo -e "${YELLOW}To enable Cloud Run and Artifact Registry, you need to link a Billing Account.${NC}"
+    echo "Here are your available billing accounts:"
+    gcloud billing accounts list
+    read -p "Enter the Billing Account ID to link (or press enter to skip): " BILLING_ID
+    
+    if [ -n "$BILLING_ID" ]; then
+        echo -e "${GREEN}Linking billing account $BILLING_ID to project $PROJECT_ID...${NC}"
+        gcloud billing projects link "$PROJECT_ID" --billing-account "$BILLING_ID"
+    fi
+    
     echo -e "${GREEN}Enabling APIs (Gmail, Cloud Run, Artifact Registry)...${NC}"
     gcloud services enable gmail.googleapis.com run.googleapis.com artifactregistry.googleapis.com
     
