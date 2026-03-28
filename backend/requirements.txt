@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+pydantic
+sqlmodel
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
+slowapi
+httpx
+pytest
+pytest-asyncio
+diskcache
+python-dotenv

@@ -1,0 +1,5 @@
+[2m2026-03-28T00:43:50.368446Z[0m [33m WARN[0m [2mralph::loop_runner[0m[2m:[0m Interactive mode requested but stdout is not a TTY, falling back to autonomous
+[2m2026-03-28T00:43:50.370297Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Memory injection check: enabled=true, inject=Auto, workspace_root="/Users/mabino/Downloads/mebwhale"
+[2m2026-03-28T00:43:50.370325Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Looking for memories at: "/Users/mabino/Downloads/mebwhale/.ralph/agent/memories.md" (exists: false)
+[2m2026-03-28T00:43:50.370336Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Successfully loaded 0 memories from store
+[2m2026-03-28T00:43:50.370342Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Memory store is empty - no memories to inject

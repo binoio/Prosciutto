@@ -1,0 +1,15 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - backend-data:/data
+    environment:
+      - DATABASE_URL=sqlite:////data/gmail_app.db
+    # restart: always
+
+volumes:
+  backend-data:
