@@ -213,6 +213,21 @@
             const urlParams = new URLSearchParams(window.location.search);
             const messageId = urlParams.get('messageId');
             const accountId = urlParams.get('accountId');
+            const compose = urlParams.get('compose');
+
+            if (compose === 'true') {
+                // Compose-only view mode
+                document.getElementById('sidebar').style.display = 'none';
+                document.getElementById('header').style.display = 'none';
+                document.getElementById('message-list-container').style.display = 'none';
+                const panel = document.getElementById('message-detail-panel');
+                panel.classList.add('open', 'single-view');
+
+                await loadSettings();
+                await loadAccounts();
+                renderNewComposerInPanel(accountId);
+                return;
+            }
 
             if (messageId && accountId) {
                 // Single-message view mode
@@ -976,8 +991,13 @@
                     alert(result.message);
                     const panel = document.getElementById('message-detail-panel');
                     if (panel.classList.contains('single-view')) {
-                        const msg = JSON.parse(panel.dataset.currentMessage);
-                        showMessage(msg.id, accId, true);
+                        if (panel.dataset.currentMessage) {
+                            const msg = JSON.parse(panel.dataset.currentMessage);
+                            showMessage(msg.id, accId, true);
+                        } else {
+                            // New message in single view
+                            window.close();
+                        }
                     } else {
                         hideMessageDetail();
                         refreshMailbox();
@@ -1057,13 +1077,18 @@
             if (!accId && accounts.length > 0) accId = accounts[0].id;
             
             const panel = document.getElementById('message-detail-panel');
+            delete panel.dataset.currentMessage;
+            delete panel.dataset.currentAccountId;
+            
             panel.classList.add('open');
+            const isSingleView = panel.classList.contains('single-view');
+            const discardAction = isSingleView ? 'window.close()' : 'hideMessageDetail()';
             
             panel.innerHTML = `
                 <div class="composer-in-panel" style="display: flex; flex-direction: column; height: 100%;">
                     <div class="composer-header" style="background: none; color: var(--text-dark); border-bottom: 1px solid var(--border-gray); border-radius: 0; padding: 20px;">
                         <span style="font-size: 18px; font-weight: bold;">New Message</span>
-                        <span style="cursor: pointer;" onclick="hideMessageDetail()">✖</span>
+                        <span style="cursor: pointer;" onclick="${discardAction}">✖</span>
                     </div>
                     <div class="composer-body" style="padding: 20px; flex: 1; display: flex; flex-direction: column; overflow-y: auto;">
                         <div class="form-group">
@@ -1086,7 +1111,7 @@
                         <input type="hidden" id="panel-compose-references" value="">
                         <div style="display: flex; gap: 10px; margin-top: 20px; padding-bottom: 20px;">
                             <button class="compose-btn" style="width: 120px;" onclick="sendEmailFromPanel(event, ${accId})">Send</button>
-                            <button class="compose-btn" style="width: 120px; background: var(--bg-light-gray);" onclick="hideMessageDetail()">Discard</button>
+                            <button class="compose-btn" style="width: 120px; background: var(--bg-light-gray);" onclick="${discardAction}">Discard</button>
                         </div>
                     </div>
                 </div>
