@@ -13,10 +13,11 @@ echo -e "${BLUE}=======================================${NC}"
 
 function show_menu() {
     echo -e "\n${YELLOW}Please choose an action:${NC}"
-    echo "1) Create GCP Project & Enable APIs"
+    echo "1) Create GCP Project & Enable Gmail API (Local Dev)"
     echo "2) Enable/Disable Gmail API only"
-    echo "3) Deploy Stack to Cloud Run"
-    echo "4) Teardown (Delete Project)"
+    echo "3) Prepare for Cloud Run (Requires Billing)"
+    echo "4) Deploy Stack to Cloud Run"
+    echo "5) Teardown (Delete Project)"
     echo "q) Quit"
     read -p "Action: " choice
 }
@@ -34,7 +35,24 @@ function create_project() {
     gcloud projects create "$PROJECT_ID"
     gcloud config set project "$PROJECT_ID"
     
+    echo -e "${GREEN}Enabling Gmail API...${NC}"
+    gcloud services enable gmail.googleapis.com
+    
+    echo -e "${YELLOW}Important:${NC} You MUST create OAuth2 credentials manually in the console:"
+    echo "https://console.cloud.google.com/apis/credentials?project=$PROJECT_ID"
+    echo "1. Create 'OAuth client ID' for 'Web application'."
+    echo "2. Add Authorized Redirect URI: http://localhost:8000/auth/callback"
+}
+
+function prepare_cloud_run() {
     echo -e "${YELLOW}To enable Cloud Run and Artifact Registry, you need to link a Billing Account.${NC}"
+    
+    PROJECT_ID=$(gcloud config get-value project)
+    if [ -z "$PROJECT_ID" ]; then
+        read -p "Enter your Project ID: " PROJECT_ID
+        gcloud config set project "$PROJECT_ID"
+    fi
+
     echo "Here are your available billing accounts:"
     gcloud billing accounts list
     read -p "Enter the Billing Account ID to link (or press enter to skip): " BILLING_ID
@@ -44,13 +62,10 @@ function create_project() {
         gcloud billing projects link "$PROJECT_ID" --billing-account "$BILLING_ID"
     fi
     
-    echo -e "${GREEN}Enabling APIs (Gmail, Cloud Run, Artifact Registry)...${NC}"
-    gcloud services enable gmail.googleapis.com run.googleapis.com artifactregistry.googleapis.com
+    echo -e "${GREEN}Enabling APIs (Cloud Run, Artifact Registry)...${NC}"
+    gcloud services enable run.googleapis.com artifactregistry.googleapis.com
     
-    echo -e "${YELLOW}Important:${NC} You MUST create OAuth2 credentials manually in the console:"
-    echo "https://console.cloud.google.com/apis/credentials?project=$PROJECT_ID"
-    echo "1. Create 'OAuth client ID' for 'Web application'."
-    echo "2. Add Authorized Redirect URI: http://localhost:8000/auth/callback (or your Cloud Run URL later)"
+    echo -e "${YELLOW}Note:${NC} Ensure your OAuth credentials have your Cloud Run URL added as an Authorized Redirect URI."
 }
 
 function toggle_gmail_api() {
@@ -91,8 +106,9 @@ while true; do
     case $choice in
         1) create_project ;;
         2) toggle_gmail_api ;;
-        3) deploy_stack ;;
-        4) teardown ;;
+        3) prepare_cloud_run ;;
+        4) deploy_stack ;;
+        5) teardown ;;
         q) exit 0 ;;
         *) echo -e "${RED}Invalid choice${NC}" ;;
     esac
