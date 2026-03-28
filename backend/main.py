@@ -15,8 +15,8 @@ from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from sqlmodel import Session, select
-from .db import create_db_and_tables, get_session
-from .models import Account, Setting
+from db import create_db_and_tables, get_session
+from models import Account, Setting
 
 # Initialize Limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -46,7 +46,7 @@ def get_client_config():
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
     
     # Using local engine from db.py
-    from .db import engine
+    from db import engine
     with Session(engine) as session:
         client_id_setting = session.exec(select(Setting).where(Setting.key == "GOOGLE_CLIENT_ID")).first()
         client_secret_setting = session.exec(select(Setting).where(Setting.key == "GOOGLE_CLIENT_SECRET")).first()
