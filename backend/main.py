@@ -67,6 +67,11 @@ def get_client_config():
         }
     }
 
+@app.get("/settings")
+async def get_settings(session: Session = Depends(get_session)):
+    settings = session.exec(select(Setting)).all()
+    return {s.key: s.value for s in settings}
+
 @app.post("/settings")
 async def update_settings(settings: dict, session: Session = Depends(get_session)):
     for key, value in settings.items():
@@ -193,13 +198,17 @@ def get_gmail_service(account_id: int, session: Session):
     return build("gmail", "v1", credentials=creds)
 
 @app.get("/accounts/{account_id}/messages")
-async def list_messages(account_id: int, session: Session = Depends(get_session)):
+async def list_messages(account_id: int, label: str = None, session: Session = Depends(get_session)):
     service = get_gmail_service(account_id, session)
     if not service:
         raise HTTPException(status_code=404, detail="Account not found")
     
     try:
-        results = service.users().messages().list(userId="me", maxResults=20).execute()
+        kwargs = {"userId": "me", "maxResults": 20}
+        if label:
+            kwargs["labelIds"] = [label]
+        
+        results = service.users().messages().list(**kwargs).execute()
         messages = results.get("messages", [])
         
         # Optionally fetch snippet for each message
@@ -209,7 +218,8 @@ async def list_messages(account_id: int, session: Session = Depends(get_session)
             detailed_messages.append({
                 "id": m["id"],
                 "snippet": m["snippet"],
-                "threadId": m["threadId"]
+                "threadId": m["threadId"],
+                "internalDate": int(m["internalDate"])
             })
         
         return detailed_messages
@@ -260,7 +270,7 @@ async def send_email(account_id: int, request: SendEmailRequest, session: Sessio
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/unified/messages")
-async def unified_messages(session: Session = Depends(get_session)):
+async def unified_messages(label: str = None, session: Session = Depends(get_session)):
     accounts = session.exec(select(Account).where(Account.is_active)).all()
     
     all_messages = []
@@ -272,7 +282,11 @@ async def unified_messages(session: Session = Depends(get_session)):
             service = get_gmail_service(account.id, session)
             if not service: continue
             
-            results = service.users().messages().list(userId="me", maxResults=10).execute()
+            kwargs = {"userId": "me", "maxResults": 10}
+            if label:
+                kwargs["labelIds"] = [label]
+
+            results = service.users().messages().list(**kwargs).execute()
             messages = results.get("messages", [])
             
             for msg in messages:

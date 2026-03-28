@@ -3,6 +3,7 @@ from sqlmodel import Field, SQLModel, Relationship
 import json
 
 class Account(SQLModel, table=True):
+    __table_args__ = {"extend_existing": True}
     id: Optional[int] = Field(default=None, primary_key=True)
     email: str = Field(index=True, unique=True)
     # Storing credentials as JSON string for simplicity, or we could use another table
@@ -11,6 +12,7 @@ class Account(SQLModel, table=True):
     is_active: bool = Field(default=True)
 
 class Setting(SQLModel, table=True):
+    __table_args__ = {"extend_existing": True}
     id: Optional[int] = Field(default=None, primary_key=True)
     key: str = Field(index=True, unique=True)
     value: str

@@ -3,117 +3,317 @@
 <head>
     <title>Gmail API Web App</title>
     <style>
-        body { font-family: sans-serif; margin: 0; display: flex; height: 100vh; color: #333; }
-        #sidebar { width: 250px; background: #f1f3f4; padding: 20px; border-right: 1px solid #ddd; }
-        #main { flex: 1; padding: 20px; overflow-y: auto; }
-        h1, h2 { color: #d93025; }
-        .account-item { padding: 10px; margin: 5px 0; background: #fff; border-radius: 4px; cursor: pointer; border: 1px solid transparent; }
-        .account-item:hover { background: #e8eaed; }
-        .account-item.active { border-color: #d93025; background: #fce8e6; }
-        .btn { padding: 10px 15px; background: #d93025; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
-        .btn:hover { background: #b71c1c; }
-        .btn-secondary { background: #5f6368; }
-        .message-item { padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; }
-        .message-item:hover { background: #f8f9fa; }
-        .message-snippet { color: #70757a; font-size: 0.9em; }
-        .composer { display: none; margin-top: 20px; border: 1px solid #ddd; padding: 20px; border-radius: 8px; }
-        .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; margin-bottom: 5px; }
-        .form-group input, .form-group textarea { width: 100%; padding: 8px; box-sizing: border-box; }
-        #settings-panel { margin-top: 20px; border-top: 1px solid #ddd; padding-top: 20px; }
+        :root {
+            --bg-white: #ffffff;
+            --bg-light-gray: #f1f3f4;
+            --bg-blue: rgb(214,226,251);
+            --border-gray: #ddd;
+            --text-dark: #333;
+            --text-gray: #5f6368;
+            --accent-red: #d93025;
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; height: 100vh; color: var(--text-dark); background-color: var(--bg-white); }
+        
+        #sidebar { 
+            width: 250px; 
+            background: var(--bg-light-gray); 
+            padding: 10px 0; 
+            border-right: 1px solid var(--border-gray); 
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #compose-area { padding: 10px 20px; margin-bottom: 10px; }
+        .compose-btn { 
+            width: 100%;
+            padding: 12px; 
+            background: var(--bg-blue); 
+            color: var(--text-dark); 
+            border: none; 
+            border-radius: 24px; 
+            cursor: pointer; 
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 1px 2px 0 rgba(60,64,67,0.302), 0 1px 3px 1px rgba(60,64,67,0.149);
+            transition: box-shadow .2s ease;
+        }
+        .compose-btn:hover { box-shadow: 0 4px 4px 0 rgba(60,64,67,0.302), 0 1px 3px 1px rgba(60,64,67,0.149); }
+
+        .mailbox-item { 
+            padding: 10px 20px 10px 30px; 
+            cursor: pointer; 
+            display: flex; 
+            align-items: center;
+            font-size: 14px;
+            border-top-right-radius: 20px;
+            border-bottom-right-radius: 20px;
+            margin-right: 10px;
+        }
+        .mailbox-item:hover { background: #e8eaed; }
+        .mailbox-item.active { background: var(--bg-blue); font-weight: bold; }
+        
+        .disclosure-triangle {
+            margin-right: 10px;
+            cursor: pointer;
+            width: 12px;
+            display: inline-block;
+            transition: transform 0.2s;
+        }
+        .disclosure-triangle.expanded { transform: rotate(90deg); }
+        
+        .account-subset { display: none; padding-left: 40px; }
+        .account-subset.visible { display: block; }
+        .account-subset-item { padding: 5px 10px; font-size: 12px; cursor: pointer; color: var(--text-gray); }
+        .account-subset-item:hover { text-decoration: underline; }
+
+        #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        
+        #header { 
+            height: 64px; 
+            padding: 0 20px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border-gray);
+        }
+        #header h2 { margin: 0; font-size: 20px; font-weight: normal; }
+        
+        #settings-trigger { 
+            font-size: 24px; 
+            cursor: pointer; 
+            padding: 8px; 
+            border-radius: 50%; 
+            color: var(--text-gray);
+        }
+        #settings-trigger:hover { background: var(--bg-light-gray); }
+
+        #content { flex: 1; overflow-y: auto; padding: 0; }
+
+        .message-item { 
+            padding: 10px 20px; 
+            border-bottom: 1px solid #eee; 
+            cursor: pointer; 
+            display: flex;
+            align-items: baseline;
+            background: var(--bg-white);
+        }
+        .message-item:hover { 
+            background: #f8f9fa; 
+            box-shadow: inset 1px 0 0 #dadce0, inset -1px 0 0 #dadce0, 0 1px 2px 0 rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15);
+            z-index: 1;
+        }
+        .message-sender { width: 200px; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .message-snippet { flex: 1; color: var(--text-gray); font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .message-date { width: 100px; text-align: right; color: var(--text-gray); font-size: 0.85em; }
+
+        .composer-overlay { 
+            position: fixed; bottom: 0; right: 50px; width: 500px; 
+            background: #fff; border-top-left-radius: 8px; border-top-right-radius: 8px;
+            box-shadow: 0 8px 10px 1px rgba(0,0,0,0.14), 0 3px 14px 2px rgba(0,0,0,0.12), 0 5px 5px -3px rgba(0,0,0,0.2);
+            display: none; flex-direction: column; z-index: 100;
+        }
+        .composer-header { background: #404040; color: #fff; padding: 10px 15px; border-top-left-radius: 8px; border-top-right-radius: 8px; display: flex; justify-content: space-between; }
+        .composer-body { padding: 15px; flex: 1; display: flex; flex-direction: column; }
+        .form-group { margin-bottom: 10px; border-bottom: 1px solid #eee; }
+        .form-group input, .form-group select { border: none; width: 100%; padding: 8px 0; outline: none; }
+        .form-group textarea { border: none; width: 100%; padding: 8px 0; outline: none; resize: none; flex: 1; min-height: 200px; }
+        
+        #settings-panel {
+            position: fixed; top: 64px; right: 20px; width: 300px;
+            background: #fff; border: 1px solid var(--border-gray); border-radius: 8px;
+            box-shadow: 0 1px 2px 0 rgba(60,64,67,0.302), 0 1px 3px 1px rgba(60,64,67,0.149);
+            padding: 20px; display: none; z-index: 90;
+        }
+
+        #first-run-prompt {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.9); display: none; align-items: center; justify-content: center; z-index: 200;
+        }
+        .prompt-card { background: #fff; padding: 40px; border-radius: 8px; box-shadow: 0 1px 2px 0 rgba(60,64,67,0.302), 0 1px 3px 1px rgba(60,64,67,0.149); text-align: center; }
     </style>
 </head>
 <body>
     <div id="sidebar">
-        <h1>Gmail App</h1>
-        <button class="btn" onclick="location.href='/auth/login'">+ Add Account</button>
-        <div id="account-list" style="margin-top: 20px;">
-            <div class="account-item active" onclick="loadUnifiedInbox()">Unified Inbox</div>
-            <!-- Accounts will be loaded here -->
+        <div id="compose-area">
+            <button class="compose-btn" onclick="showComposer()">+ Compose</button>
         </div>
-        <div id="settings-panel">
-            <h3>Settings</h3>
-            <div class="form-group">
-                <input type="text" id="client-id" placeholder="Google Client ID">
+        <div id="mailbox-list">
+            <div class="mailbox-item active" onclick="loadMailbox('INBOX')">
+                <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'INBOX')">▶</span>
+                Inbox
             </div>
-            <div class="form-group">
-                <input type="password" id="client-secret" placeholder="Google Client Secret">
+            <div id="accounts-INBOX" class="account-subset"></div>
+            
+            <div class="mailbox-item" onclick="loadMailbox('SENT')">
+                <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'SENT')">▶</span>
+                Sent
             </div>
-            <button class="btn btn-secondary" onclick="updateSettings()">Save Settings</button>
+            <div id="accounts-SENT" class="account-subset"></div>
+
+            <div class="mailbox-item" onclick="loadMailbox('STARRED')">
+                <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'STARRED')">▶</span>
+                Starred
+            </div>
+            <div id="accounts-STARRED" class="account-subset"></div>
+
+            <div class="mailbox-item" onclick="loadMailbox('DRAFT')">
+                <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'DRAFT')">▶</span>
+                Drafts
+            </div>
+            <div id="accounts-DRAFT" class="account-subset"></div>
+
+            <div class="mailbox-item" onclick="loadMailbox('TRASH')">
+                <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'TRASH')">▶</span>
+                Trash
+            </div>
+            <div id="accounts-TRASH" class="account-subset"></div>
         </div>
     </div>
     <div id="main">
-        <div id="inbox-title">
-            <h2 id="view-name">Unified Inbox</h2>
-            <button class="btn" style="float: right;" onclick="showComposer()">Compose</button>
+        <div id="header">
+            <h2 id="view-name">Inbox</h2>
+            <div id="settings-trigger" onclick="toggleSettings()">⚙</div>
         </div>
-        <div id="composer" class="composer">
-            <h3>Compose Email</h3>
+        <div id="content">
+            <div id="message-list">
+                <!-- Messages will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <div id="settings-panel">
+        <h3>Settings</h3>
+        <div class="form-group">
+            <label>Google Client ID</label>
+            <input type="text" id="client-id" placeholder="Client ID">
+        </div>
+        <div class="form-group">
+            <label>Google Client Secret</label>
+            <input type="password" id="client-secret" placeholder="Client Secret">
+        </div>
+        <button class="compose-btn" style="background: var(--bg-light-gray); border: 1px solid var(--border-gray); margin-bottom: 10px;" onclick="updateSettings()">Save Settings</button>
+        <button class="compose-btn" onclick="addAccount()">Add Account</button>
+    </div>
+
+    <div id="composer" class="composer-overlay">
+        <div class="composer-header">
+            <span>New Message</span>
+            <span style="cursor: pointer;" onclick="hideComposer()">✖</span>
+        </div>
+        <div class="composer-body">
             <div class="form-group">
-                <label>From:</label>
                 <select id="compose-from"></select>
             </div>
             <div class="form-group">
-                <label>To:</label>
-                <input type="text" id="compose-to">
+                <input type="text" id="compose-to" placeholder="To">
             </div>
             <div class="form-group">
-                <label>Subject:</label>
-                <input type="text" id="compose-subject">
+                <input type="text" id="compose-subject" placeholder="Subject">
             </div>
             <div class="form-group">
-                <label>Body:</label>
-                <textarea id="compose-body" rows="10"></textarea>
+                <textarea id="compose-body" placeholder="Body"></textarea>
             </div>
-            <button class="btn" onclick="sendEmail()">Send</button>
-            <button class="btn btn-secondary" onclick="hideComposer()">Cancel</button>
+            <button class="compose-btn" style="width: 100px; align-self: flex-start;" onclick="sendEmail()">Send</button>
         </div>
-        <div id="message-list">
-            <!-- Messages will be loaded here -->
+    </div>
+
+    <div id="first-run-prompt">
+        <div class="prompt-card">
+            <h2>Welcome to Gmail App</h2>
+            <p>Please configure your Google API credentials and add an account to get started.</p>
+            <button class="compose-btn" onclick="toggleSettings(); document.getElementById('first-run-prompt').style.display='none'">Go to Settings</button>
         </div>
     </div>
 
     <script>
+        let currentLabel = 'INBOX';
         let currentAccountId = null; // null means unified
+        let accounts = [];
+
+        async function init() {
+            await loadAccounts();
+            if (accounts.length === 0) {
+                document.getElementById('first-run-prompt').style.display = 'flex';
+            } else {
+                loadMailbox('INBOX');
+            }
+        }
 
         async function loadAccounts() {
             const res = await fetch('/accounts');
-            const accounts = await res.json();
-            const list = document.getElementById('account-list');
-            const select = document.getElementById('compose-from');
+            accounts = await res.json();
             
-            // Keep Unified Inbox
-            list.innerHTML = `<div class="account-item ${currentAccountId === null ? 'active' : ''}" onclick="loadUnifiedInbox()">Unified Inbox</div>`;
+            const select = document.getElementById('compose-from');
             select.innerHTML = '';
-
             accounts.forEach(acc => {
-                const item = document.createElement('div');
-                item.className = `account-item ${currentAccountId === acc.id ? 'active' : ''}`;
-                item.innerText = acc.email;
-                item.onclick = () => loadAccountInbox(acc.id, acc.email);
-                list.appendChild(item);
-
                 const opt = document.createElement('option');
                 opt.value = acc.id;
                 opt.innerText = acc.email;
                 select.appendChild(opt);
             });
+            
+            // Populate account subsets in sidebar
+            ['INBOX', 'SENT', 'STARRED', 'DRAFT', 'TRASH'].forEach(label => {
+                const subset = document.getElementById(`accounts-${label}`);
+                subset.innerHTML = '';
+                accounts.forEach(acc => {
+                    const item = document.createElement('div');
+                    item.className = 'account-subset-item';
+                    item.innerText = acc.email;
+                    item.onclick = (e) => {
+                        e.stopPropagation();
+                        loadAccountMailbox(acc.id, acc.email, label);
+                    };
+                    subset.appendChild(item);
+                });
+            });
         }
 
-        async function loadUnifiedInbox() {
+        function toggleDisclosure(event, label) {
+            event.stopPropagation();
+            const triangle = event.target;
+            const subset = document.getElementById(`accounts-${label}`);
+            triangle.classList.toggle('expanded');
+            subset.classList.toggle('visible');
+        }
+
+        async function toggleSettings() {
+            const panel = document.getElementById('settings-panel');
+            if (panel.style.display === 'none' || panel.style.display === '') {
+                panel.style.display = 'block';
+                const res = await fetch('/settings');
+                const settings = await res.json();
+                document.getElementById('client-id').value = settings.GOOGLE_CLIENT_ID || '';
+                document.getElementById('client-secret').value = settings.GOOGLE_CLIENT_SECRET || '';
+            } else {
+                panel.style.display = 'none';
+            }
+        }
+
+        async function loadMailbox(label) {
+            currentLabel = label;
             currentAccountId = null;
-            document.getElementById('view-name').innerText = 'Unified Inbox';
-            loadAccounts();
-            const res = await fetch('/unified/messages');
+            document.getElementById('view-name').innerText = label.charAt(0) + label.slice(1).toLowerCase();
+            
+            // Update active state in sidebar
+            document.querySelectorAll('.mailbox-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.innerText.includes(label.charAt(0) + label.slice(1).toLowerCase()) || item.innerText.includes(label)) {
+                    item.classList.add('active');
+                }
+            });
+
+            const res = await fetch(`/unified/messages?label=${label}`);
             const messages = await res.json();
             renderMessages(messages);
         }
 
-        async function loadAccountInbox(id, email) {
-            currentAccountId = id;
-            document.getElementById('view-name').innerText = email;
-            loadAccounts();
-            const res = await fetch(`/accounts/${id}/messages`);
+        async function loadAccountMailbox(accId, email, label) {
+            currentLabel = label;
+            currentAccountId = accId;
+            document.getElementById('view-name').innerText = `${email} - ${label}`;
+            
+            const res = await fetch(`/accounts/${accId}/messages?label=${label}`);
             const messages = await res.json();
             renderMessages(messages);
         }
@@ -125,8 +325,9 @@
                 const item = document.createElement('div');
                 item.className = 'message-item';
                 item.innerHTML = `
-                    <div style="font-weight: bold;">${msg.accountEmail || ''}</div>
+                    <div class="message-sender">${msg.accountEmail || ''}</div>
                     <div class="message-snippet">${msg.snippet}</div>
+                    <div class="message-date">${new Date(msg.internalDate).toLocaleDateString()}</div>
                 `;
                 item.onclick = () => showMessage(msg.id, msg.accountId || currentAccountId);
                 list.appendChild(item);
@@ -140,13 +341,11 @@
         }
 
         function showComposer() {
-            document.getElementById('composer').style.display = 'block';
-            document.getElementById('message-list').style.display = 'none';
+            document.getElementById('composer').style.display = 'flex';
         }
 
         function hideComposer() {
             document.getElementById('composer').style.display = 'none';
-            document.getElementById('message-list').style.display = 'block';
         }
 
         async function sendEmail() {
@@ -166,6 +365,10 @@
             hideComposer();
         }
 
+        function addAccount() {
+            location.href = '/auth/login';
+        }
+
         async function updateSettings() {
             const clientId = document.getElementById('client-id').value;
             const clientSecret = document.getElementById('client-secret').value;
@@ -180,8 +383,7 @@
             alert('Settings saved');
         }
 
-        // Initial load
-        loadUnifiedInbox();
+        init();
     </script>
 </body>
 </html>
