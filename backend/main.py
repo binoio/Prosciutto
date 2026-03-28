@@ -6,6 +6,7 @@ from slowapi.errors import RateLimitExceeded
 from contextlib import asynccontextmanager
 import os
 import json
+import httpx
 from dotenv import load_dotenv
 
 # Load .env file if it exists
@@ -116,13 +117,33 @@ async def auth_callback(request: Request, code: str, state: str, session: Sessio
     if os.getenv("FORCE_HTTPS"):
         redirect_uri = redirect_uri.replace("http://", "https://")
     
-    flow = Flow.from_client_config(
-        client_config,
-        scopes=SCOPES,
-        redirect_uri=redirect_uri
+    # Manually exchange code for tokens to avoid PKCE 'Missing code verifier' errors
+    # google-auth-oauthlib's Flow requires stateful session for PKCE which we don't have
+    token_url = client_config["web"]["token_uri"]
+    data = {
+        "code": code,
+        "client_id": client_config["web"]["client_id"],
+        "client_secret": client_config["web"]["client_secret"],
+        "redirect_uri": redirect_uri,
+        "grant_type": "authorization_code",
+    }
+    
+    async with httpx.AsyncClient() as client:
+        token_response = await client.post(token_url, data=data)
+        if token_response.status_code != 200:
+            raise HTTPException(status_code=400, detail=f"Token exchange failed: {token_response.text}")
+        
+        token_data = token_response.json()
+    
+    # Build credentials object manually
+    credentials = Credentials(
+        token=token_data.get("access_token"),
+        refresh_token=token_data.get("refresh_token"),
+        token_uri=token_url,
+        client_id=client_config["web"]["client_id"],
+        client_secret=client_config["web"]["client_secret"],
+        scopes=SCOPES
     )
-    flow.fetch_token(code=code)
-    credentials = flow.credentials
     
     # Get user email
     service = build("oauth2", "v2", credentials=credentials)
