@@ -191,6 +191,37 @@ async def get_message(account_id: int, message_id: str, session: Session = Depen
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+import base64
+from email.mime.text import MIMEText
+from pydantic import BaseModel
+
+class SendEmailRequest(BaseModel):
+    to: str
+    subject: str
+    body: str
+
+@app.post("/accounts/{account_id}/send")
+async def send_email(account_id: int, request: SendEmailRequest, session: Session = Depends(get_session)):
+    service = get_gmail_service(account_id, session)
+    if not service:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    try:
+        message = MIMEText(request.body)
+        message["to"] = request.to
+        message["subject"] = request.subject
+        
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        
+        send_result = service.users().messages().send(
+            userId="me",
+            body={"raw": raw_message}
+        ).execute()
+        
+        return {"message": "Email sent", "result": send_result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
