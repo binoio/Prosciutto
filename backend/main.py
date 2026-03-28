@@ -72,10 +72,15 @@ async def update_settings(settings: dict, session: Session = Depends(get_session
     session.commit()
     return {"message": "Settings updated"}
 
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 @app.get("/")
 @limiter.limit("5/minute")
 async def root():
-    return {"message": "Gmail API Web App is running"}
+    return FileResponse(os.path.join(BASE_DIR, "../frontend/index.html"))
 
 @app.get("/auth/login")
 async def login(request: Request):

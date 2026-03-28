@@ -2,8 +2,186 @@
 <html>
 <head>
     <title>Gmail API Web App</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; display: flex; height: 100vh; color: #333; }
+        #sidebar { width: 250px; background: #f1f3f4; padding: 20px; border-right: 1px solid #ddd; }
+        #main { flex: 1; padding: 20px; overflow-y: auto; }
+        h1, h2 { color: #d93025; }
+        .account-item { padding: 10px; margin: 5px 0; background: #fff; border-radius: 4px; cursor: pointer; border: 1px solid transparent; }
+        .account-item:hover { background: #e8eaed; }
+        .account-item.active { border-color: #d93025; background: #fce8e6; }
+        .btn { padding: 10px 15px; background: #d93025; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+        .btn:hover { background: #b71c1c; }
+        .btn-secondary { background: #5f6368; }
+        .message-item { padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; }
+        .message-item:hover { background: #f8f9fa; }
+        .message-snippet { color: #70757a; font-size: 0.9em; }
+        .composer { display: none; margin-top: 20px; border: 1px solid #ddd; padding: 20px; border-radius: 8px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; }
+        .form-group input, .form-group textarea { width: 100%; padding: 8px; box-sizing: border-box; }
+        #settings-panel { margin-top: 20px; border-top: 1px solid #ddd; padding-top: 20px; }
+    </style>
 </head>
 <body>
-    <div id="root">Frontend placeholder</div>
+    <div id="sidebar">
+        <h1>Gmail App</h1>
+        <button class="btn" onclick="location.href='/auth/login'">+ Add Account</button>
+        <div id="account-list" style="margin-top: 20px;">
+            <div class="account-item active" onclick="loadUnifiedInbox()">Unified Inbox</div>
+            <!-- Accounts will be loaded here -->
+        </div>
+        <div id="settings-panel">
+            <h3>Settings</h3>
+            <div class="form-group">
+                <input type="text" id="client-id" placeholder="Google Client ID">
+            </div>
+            <div class="form-group">
+                <input type="password" id="client-secret" placeholder="Google Client Secret">
+            </div>
+            <button class="btn btn-secondary" onclick="updateSettings()">Save Settings</button>
+        </div>
+    </div>
+    <div id="main">
+        <div id="inbox-title">
+            <h2 id="view-name">Unified Inbox</h2>
+            <button class="btn" style="float: right;" onclick="showComposer()">Compose</button>
+        </div>
+        <div id="composer" class="composer">
+            <h3>Compose Email</h3>
+            <div class="form-group">
+                <label>From:</label>
+                <select id="compose-from"></select>
+            </div>
+            <div class="form-group">
+                <label>To:</label>
+                <input type="text" id="compose-to">
+            </div>
+            <div class="form-group">
+                <label>Subject:</label>
+                <input type="text" id="compose-subject">
+            </div>
+            <div class="form-group">
+                <label>Body:</label>
+                <textarea id="compose-body" rows="10"></textarea>
+            </div>
+            <button class="btn" onclick="sendEmail()">Send</button>
+            <button class="btn btn-secondary" onclick="hideComposer()">Cancel</button>
+        </div>
+        <div id="message-list">
+            <!-- Messages will be loaded here -->
+        </div>
+    </div>
+
+    <script>
+        let currentAccountId = null; // null means unified
+
+        async function loadAccounts() {
+            const res = await fetch('/accounts');
+            const accounts = await res.json();
+            const list = document.getElementById('account-list');
+            const select = document.getElementById('compose-from');
+            
+            // Keep Unified Inbox
+            list.innerHTML = `<div class="account-item ${currentAccountId === null ? 'active' : ''}" onclick="loadUnifiedInbox()">Unified Inbox</div>`;
+            select.innerHTML = '';
+
+            accounts.forEach(acc => {
+                const item = document.createElement('div');
+                item.className = `account-item ${currentAccountId === acc.id ? 'active' : ''}`;
+                item.innerText = acc.email;
+                item.onclick = () => loadAccountInbox(acc.id, acc.email);
+                list.appendChild(item);
+
+                const opt = document.createElement('option');
+                opt.value = acc.id;
+                opt.innerText = acc.email;
+                select.appendChild(opt);
+            });
+        }
+
+        async function loadUnifiedInbox() {
+            currentAccountId = null;
+            document.getElementById('view-name').innerText = 'Unified Inbox';
+            loadAccounts();
+            const res = await fetch('/unified/messages');
+            const messages = await res.json();
+            renderMessages(messages);
+        }
+
+        async function loadAccountInbox(id, email) {
+            currentAccountId = id;
+            document.getElementById('view-name').innerText = email;
+            loadAccounts();
+            const res = await fetch(`/accounts/${id}/messages`);
+            const messages = await res.json();
+            renderMessages(messages);
+        }
+
+        function renderMessages(messages) {
+            const list = document.getElementById('message-list');
+            list.innerHTML = '';
+            messages.forEach(msg => {
+                const item = document.createElement('div');
+                item.className = 'message-item';
+                item.innerHTML = `
+                    <div style="font-weight: bold;">${msg.accountEmail || ''}</div>
+                    <div class="message-snippet">${msg.snippet}</div>
+                `;
+                item.onclick = () => showMessage(msg.id, msg.accountId || currentAccountId);
+                list.appendChild(item);
+            });
+        }
+
+        async function showMessage(id, accId) {
+            const res = await fetch(`/accounts/${accId}/messages/${id}`);
+            const msg = await res.json();
+            alert(JSON.stringify(msg, null, 2));
+        }
+
+        function showComposer() {
+            document.getElementById('composer').style.display = 'block';
+            document.getElementById('message-list').style.display = 'none';
+        }
+
+        function hideComposer() {
+            document.getElementById('composer').style.display = 'none';
+            document.getElementById('message-list').style.display = 'block';
+        }
+
+        async function sendEmail() {
+            const accId = document.getElementById('compose-from').value;
+            const data = {
+                to: document.getElementById('compose-to').value,
+                subject: document.getElementById('compose-subject').value,
+                body: document.getElementById('compose-body').value
+            };
+            const res = await fetch(`/accounts/${accId}/send`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            alert(result.message);
+            hideComposer();
+        }
+
+        async function updateSettings() {
+            const clientId = document.getElementById('client-id').value;
+            const clientSecret = document.getElementById('client-secret').value;
+            await fetch('/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    GOOGLE_CLIENT_ID: clientId,
+                    GOOGLE_CLIENT_SECRET: clientSecret
+                })
+            });
+            alert('Settings saved');
+        }
+
+        // Initial load
+        loadUnifiedInbox();
+    </script>
 </body>
 </html>
