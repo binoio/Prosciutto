@@ -616,6 +616,21 @@
             } else {
                 banner.style.display = 'none';
             }
+            updateBulkActions(label);
+        }
+
+        function updateBulkActions(label) {
+            const bulkAction = document.getElementById('action-dropdown');
+            if (!bulkAction) return;
+            const trashOption = Array.from(bulkAction.options).find(o => o.value === 'trash' || o.value === 'delete');
+            if (!trashOption) return;
+            if (label === 'TRASH' || label === 'SPAM') {
+                trashOption.value = 'delete';
+                trashOption.innerText = 'Permanently Delete';
+            } else {
+                trashOption.value = 'trash';
+                trashOption.innerText = 'Move to Trash';
+            }
         }
 
         async function emptyCurrentMailbox() {
@@ -846,6 +861,34 @@
             else if (action === 'trash') {
                 addLabelIds.push('TRASH');
                 removeLabelIds.push('INBOX');
+            } else if (action === 'delete') {
+                const count = checkboxes.length;
+                if (globalSettings.WARN_BEFORE_DELETE !== 'false') {
+                    if (!confirm(`Are you sure you want to permanently delete ${count} message${count > 1 ? 's' : ''}?`)) {
+                        document.getElementById('action-dropdown').value = '';
+                        return;
+                    }
+                }
+                
+                for (const accId in messageIdsByAccount) {
+                    const ids = messageIdsByAccount[accId];
+                    const res = await fetch(`/accounts/${accId}/messages/batch-delete`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ids: ids })
+                    });
+                    if (!res.ok) {
+                        const error = await res.json();
+                        alert("Error: " + (error.detail || res.statusText));
+                        return;
+                    }
+                }
+                
+                // Clear selection and refresh
+                toggleAllCheckboxes(false);
+                refreshMailbox();
+                document.getElementById('action-dropdown').value = '';
+                return;
             }
             
             for (const accId in messageIdsByAccount) {
