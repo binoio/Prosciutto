@@ -151,6 +151,10 @@
                             <input type="checkbox" id="setting-compose-window" style="width: auto;" onchange="saveAllSettings()">
                             <label for="setting-compose-window">Compose new messages in their own window</label>
                         </div>
+                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+                            <input type="checkbox" id="setting-warn-delete" style="width: auto;" onchange="saveAllSettings()">
+                            <label for="setting-warn-delete">Warn before permanently deleting messages</label>
+                        </div>
                     </div>
 
                     <!-- Accounts Tab -->
@@ -277,6 +281,7 @@
             document.getElementById('client-id').value = globalSettings.GOOGLE_CLIENT_ID || '';
             document.getElementById('client-secret').value = globalSettings.GOOGLE_CLIENT_SECRET || '';
             document.getElementById('setting-compose-window').checked = globalSettings.COMPOSE_NEW_WINDOW !== 'false';
+            document.getElementById('setting-warn-delete').checked = globalSettings.WARN_BEFORE_DELETE !== 'false';
             
             if (globalSettings.is_client_id_env) {
                 document.getElementById('client-id').disabled = true;
@@ -316,6 +321,7 @@
             const starred = document.getElementById('setting-starred').checked;
             const remoteImages = document.getElementById('setting-remote-images').checked;
             const composeWindow = document.getElementById('setting-compose-window').checked;
+            const warnDelete = document.getElementById('setting-warn-delete').checked;
             const clientId = document.getElementById('client-id').value;
             const clientSecret = document.getElementById('client-secret').value;
             
@@ -324,7 +330,8 @@
                 SHOW_DISCLOSURE_IF_SINGLE: disclosure ? 'true' : 'false',
                 SHOW_STARRED: starred ? 'true' : 'false',
                 LOAD_REMOTE_IMAGES: remoteImages ? 'true' : 'false',
-                COMPOSE_NEW_WINDOW: composeWindow ? 'true' : 'false'
+                COMPOSE_NEW_WINDOW: composeWindow ? 'true' : 'false',
+                WARN_BEFORE_DELETE: warnDelete ? 'true' : 'false'
             };
             
             // Only include credentials if they are not disabled (not from env)
@@ -543,7 +550,8 @@
                 hideMessageDetail();
                 updateBanner(label);
 
-                // Update active state in sidebar                document.querySelectorAll('.mailbox-item').forEach(item => {
+                // Update active state in sidebar
+                document.querySelectorAll('.mailbox-item').forEach(item => {
                     item.classList.remove('active');
                     const targetLabel = label === '' ? 'All Mail' : label;
                     if (item.innerText.toUpperCase().includes(targetLabel.toUpperCase())) {
@@ -935,8 +943,18 @@
                         </div>
                         <div class="detail-subject">${msg.subject || '(no subject)'}</div>
                         <div class="detail-meta">
-                            <div><strong>${msg.from || ''}</strong></div>
-                            <div>${new Date(msg.internalDate).toLocaleString()}</div>
+                            <div class="meta-row">
+                                <span class="meta-label">From:</span>
+                                <span class="meta-value"><strong>${msg.from || ''}</strong></span>
+                            </div>
+                            <div class="meta-row">
+                                <span class="meta-label">To:</span>
+                                <span class="meta-value">${msg.to || ''}</span>
+                            </div>
+                            <div class="meta-row">
+                                <span class="meta-label">Date:</span>
+                                <span class="meta-value">${new Date(msg.internalDate).toLocaleString()}</span>
+                            </div>
                         </div>
                     </div>
                     ${hasRemoteImages ? `
