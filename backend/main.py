@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 import os
 import json
 import httpx
+import urllib.parse
 from dotenv import load_dotenv
 
 # Load .env file if it exists
@@ -88,6 +89,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 async def root(request: Request):
     return FileResponse(os.path.join(BASE_DIR, "../frontend/index.html"))
 
+import secrets
+
 @app.get("/auth/login")
 async def login(request: Request):
     client_config = get_client_config()
@@ -96,19 +99,22 @@ async def login(request: Request):
     if os.getenv("FORCE_HTTPS"):
         redirect_uri = redirect_uri.replace("http://", "https://")
     
-    flow = Flow.from_client_config(
-        client_config,
-        scopes=SCOPES,
-        redirect_uri=redirect_uri
-    )
-    authorization_url, state = flow.authorization_url(
-        access_type="offline",
-        include_granted_scopes="true",
-        prompt="consent"
-    )
-    # Store state in session or cookie if needed for security, 
-    # but for this MVP let's keep it simple
-    return RedirectResponse(authorization_url)
+    # Manually build authorization URL to avoid PKCE 'Missing code verifier' issues
+    # we're not using a stateful session to store the code_verifier, and 
+    # for 'Web Server' apps with a client_secret, PKCE is optional.
+    params = {
+        "client_id": client_config["web"]["client_id"],
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": " ".join(SCOPES),
+        "access_type": "offline",
+        "prompt": "consent",
+        "include_granted_scopes": "true",
+        "state": secrets.token_hex(16)
+    }
+    
+    auth_url = f"{client_config['web']['auth_uri']}?{urllib.parse.urlencode(params)}"
+    return RedirectResponse(auth_url)
 
 @app.get("/auth/callback")
 async def auth_callback(request: Request, code: str, state: str, session: Session = Depends(get_session)):
