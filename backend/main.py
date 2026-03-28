@@ -428,6 +428,29 @@ class SendEmailRequest(BaseModel):
     to: str
     subject: str
     body: str
+class BatchModifyRequest(BaseModel):
+    ids: list[str]
+    addLabelIds: list[str] = []
+    removeLabelIds: list[str] = []
+
+@app.post("/accounts/{account_id}/messages/batch-modify")
+async def batch_modify_messages(account_id: int, request: BatchModifyRequest, session: Session = Depends(get_session)):
+    service = get_gmail_service(account_id, session)
+    if not service:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    try:
+        service.users().messages().batchModify(
+            userId="me", 
+            body={
+                "ids": request.ids,
+                "addLabelIds": request.addLabelIds,
+                "removeLabelIds": request.removeLabelIds
+            }
+        ).execute()
+        return {"message": f"Updated {len(request.ids)} messages"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/accounts/{account_id}/send")
 async def send_email(account_id: int, request: SendEmailRequest, session: Session = Depends(get_session)):
