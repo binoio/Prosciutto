@@ -109,7 +109,8 @@ async def get_settings(session: Session = Depends(get_session)):
         "SHOW_DISCLOSURE_IF_SINGLE": settings_dict.get("SHOW_DISCLOSURE_IF_SINGLE", "false"),
         "SHOW_STARRED": settings_dict.get("SHOW_STARRED", "false"),
         "COMPOSE_NEW_WINDOW": settings_dict.get("COMPOSE_NEW_WINDOW", "true"),
-        "WARN_BEFORE_DELETE": settings_dict.get("WARN_BEFORE_DELETE", "true")
+        "WARN_BEFORE_DELETE": settings_dict.get("WARN_BEFORE_DELETE", "true"),
+        "CAN_PERMANENTLY_DELETE": "https://mail.google.com/" in SCOPES
     }
 
 @app.post("/settings")

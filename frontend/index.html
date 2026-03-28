@@ -281,7 +281,18 @@
             document.getElementById('client-id').value = globalSettings.GOOGLE_CLIENT_ID || '';
             document.getElementById('client-secret').value = globalSettings.GOOGLE_CLIENT_SECRET || '';
             document.getElementById('setting-compose-window').checked = globalSettings.COMPOSE_NEW_WINDOW !== 'false';
-            document.getElementById('setting-warn-delete').checked = globalSettings.WARN_BEFORE_DELETE !== 'false';
+            
+            const warnDeleteCheckbox = document.getElementById('setting-warn-delete');
+            warnDeleteCheckbox.checked = globalSettings.WARN_BEFORE_DELETE !== 'false';
+            if (!globalSettings.CAN_PERMANENTLY_DELETE) {
+                warnDeleteCheckbox.disabled = true;
+                warnDeleteCheckbox.parentElement.title = "Deletion scope not enabled in .env";
+                warnDeleteCheckbox.parentElement.style.opacity = "0.6";
+            } else {
+                warnDeleteCheckbox.disabled = false;
+                warnDeleteCheckbox.parentElement.title = "";
+                warnDeleteCheckbox.parentElement.style.opacity = "1";
+            }
             
             if (globalSettings.is_client_id_env) {
                 document.getElementById('client-id').disabled = true;
@@ -616,6 +627,19 @@
             } else {
                 banner.style.display = 'none';
             }
+            
+            if (label === 'TRASH' || label === 'SPAM') {
+                if (!globalSettings.CAN_PERMANENTLY_DELETE) {
+                    emptyBtn.disabled = true;
+                    emptyBtn.style.opacity = '0.5';
+                    emptyBtn.title = 'Deletion scope not enabled in .env';
+                } else {
+                    emptyBtn.disabled = false;
+                    emptyBtn.style.opacity = '1';
+                    emptyBtn.title = '';
+                }
+            }
+            
             updateBulkActions(label);
         }
 
@@ -626,9 +650,16 @@
             if (!trashOption) return;
             if (label === 'TRASH' || label === 'SPAM') {
                 trashOption.value = 'delete';
-                trashOption.innerText = 'Permanently Delete';
+                if (!globalSettings.CAN_PERMANENTLY_DELETE) {
+                    trashOption.disabled = true;
+                    trashOption.innerText = 'Permanently Delete (Disabled)';
+                } else {
+                    trashOption.disabled = false;
+                    trashOption.innerText = 'Permanently Delete';
+                }
             } else {
                 trashOption.value = 'trash';
+                trashOption.disabled = false;
                 trashOption.innerText = 'Move to Trash';
             }
         }
@@ -975,7 +1006,15 @@
 
                 const isTrashOrSpam = currentLabel === 'TRASH' || currentLabel === 'SPAM';
                 const trashIcon = isTrashOrSpam ? 'fa-trash-can' : 'fa-trash';
-                const trashTitle = isTrashOrSpam ? 'Permanently Delete' : 'Trash';
+                let trashTitle = isTrashOrSpam ? 'Permanently Delete' : 'Trash';
+                let trashDisabledAttr = '';
+                let trashStyleAttr = '';
+                
+                if (isTrashOrSpam && !globalSettings.CAN_PERMANENTLY_DELETE) {
+                    trashTitle = 'Permanently Delete (Disabled in .env)';
+                    trashDisabledAttr = 'disabled="disabled"';
+                    trashStyleAttr = 'style="opacity: 0.5; cursor: not-allowed;"';
+                }
 
                 panel.innerHTML = `
                     <div class="detail-header">
@@ -985,7 +1024,7 @@
                             <button class="action-btn" onclick="renderComposerInPanel('${msg.id}', ${accId}, 'forward')" title="Forward"><i class="fa-solid fa-share"></i></button>
                             <div style="flex: 1;"></div>
                             <button class="action-btn" onclick="archiveMessage('${msg.id}', ${accId})" title="Archive"><i class="fa-solid fa-box-archive"></i></button>
-                            <button class="action-btn" onclick="trashMessage('${msg.id}', ${accId})" title="${trashTitle}"><i class="fa-solid ${trashIcon}"></i></button>
+                            <button class="action-btn" onclick="trashMessage('${msg.id}', ${accId})" title="${trashTitle}" ${trashDisabledAttr} ${trashStyleAttr}><i class="fa-solid ${trashIcon}"></i></button>
                             ${isSingleView ? '' : '<span class="back-btn" onclick="hideMessageDetail()" style="margin-left: 10px;"><i class="fa-solid fa-xmark"></i></span>'}
                         </div>
                         <div class="detail-subject">${msg.subject || '(no subject)'}</div>
