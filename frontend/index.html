@@ -979,6 +979,47 @@
             }
         }
 
+        window.addEventListener('message', function(e) {
+            if (e.data && e.data.type === 'detail_iframe_height') {
+                try {
+                    const iframe = document.getElementById('detail-html-frame');
+                    if (!iframe || iframe.contentWindow !== e.source) return;
+
+                    const measured = parseInt(e.data.height, 10) || 0;
+                    const panel = document.getElementById('message-detail-panel');
+
+                    // Compute a safe maximum height: prefer available panel space, fallback to viewport.
+                    let maxHeight = Math.max(window.innerHeight - 120, 400);
+                    if (panel) {
+                        const header = panel.querySelector('.detail-header');
+                        const headerH = header ? header.getBoundingClientRect().height : 0;
+                        const panelH = panel.getBoundingClientRect().height || window.innerHeight;
+                        maxHeight = Math.max(200, panelH - headerH - 40);
+                    }
+
+                    const desired = Math.min(measured + 20, maxHeight);
+                    const last = parseInt(iframe.dataset.lastHeight || '0', 10);
+
+                    // Only apply substantial changes to avoid feedback loops
+                    if (Math.abs(desired - last) > 30) {
+                        iframe.style.height = desired + 'px';
+                        iframe.style.width = '100%';
+                        iframe.style.display = 'block';
+                        iframe.dataset.lastHeight = String(desired);
+                    }
+
+                    // If content exceeds allowed height, let the panel scroll instead of growing infinitely
+                    if (measured > desired) {
+                        if (panel) panel.style.overflowY = 'auto';
+                    } else {
+                        if (panel) panel.style.overflowY = 'visible';
+                    }
+                } catch (err) {
+                    console.error('Failed to resize iframe from message', err);
+                }
+            }
+        });
+
         async function showMessage(id, accId, isSingleView = false) {
             if (!accId) {
                 accId = accounts[0].id;
@@ -1067,14 +1108,14 @@
                 if (msg.html_body) {
                     const iframe = document.getElementById('detail-html-frame');
                     const doc = iframe.contentDocument || iframe.contentWindow.document;
+                    // Inject a script into the iframe that reports its height via postMessage whenever content changes
+                    const resizeScript = '\n<script>\n(function(){\n  function sendHeight(){\n    try{\n      var h = Math.max(document.body.scrollHeight||0, document.documentElement.scrollHeight||0, document.body.offsetHeight||0, document.documentElement.offsetHeight||0, document.body.getBoundingClientRect().height||0);\n      parent.postMessage({type: "detail_iframe_height", height: Math.ceil(h)}, "*");\n    }catch(e){/*ignore*/}\n  }\n  if (document.readyState === "complete") sendHeight(); else window.addEventListener("load", sendHeight);\n  if (window.ResizeObserver) {\n    try{ new ResizeObserver(sendHeight).observe(document.body); }catch(e){}\n  }\n  setTimeout(sendHeight, 200); setTimeout(sendHeight, 1000);\n})();\n<\/script>\n';
                     doc.open();
-                    doc.write(sanitizedHtml);
+                    doc.write(sanitizedHtml + resizeScript);
                     doc.close();
-                    
-                    // Adjust iframe height to content
-                    iframe.onload = function() {
-                        iframe.style.height = doc.body.scrollHeight + 'px';
-                    };
+                    // ensure iframe sizing will be applied when parent receives messages
+                    iframe.style.width = '100%';
+                    iframe.style.display = 'block';
                 }
                 
                 // Store the current message data for reply functions
@@ -1096,14 +1137,40 @@
             const iframe = document.getElementById('detail-html-frame');
             if (iframe && msg.html_body) {
                 const doc = iframe.contentDocument || iframe.contentWindow.document;
+                // Inject resize reporter into iframe content
+                const resizeScript = '\n<script>\n(function(){\n  function sendHeight(){\n    try{\n      var h = Math.max(document.body.scrollHeight||0, document.documentElement.scrollHeight||0, document.body.offsetHeight||0, document.documentElement.offsetHeight||0, document.body.getBoundingClientRect().height||0);\n      parent.postMessage({type: "detail_iframe_height", height: Math.ceil(h)}, "*");\n    }catch(e){}\n  }\n  if (document.readyState === "complete") sendHeight(); else window.addEventListener("load", sendHeight);\n  if (window.ResizeObserver) { try{ new ResizeObserver(sendHeight).observe(document.body); }catch(e){} }\n  setTimeout(sendHeight, 200); setTimeout(sendHeight, 1000);\n})();\n<\/script>\n';
                 doc.open();
-                doc.write(msg.html_body);
+                doc.write(msg.html_body + resizeScript);
                 doc.close();
-                
-                // Adjust iframe height to content
-                setTimeout(() => {
-                    iframe.style.height = doc.body.scrollHeight + 'px';
-                }, 100);
+                // Parent will size iframe via message listener
+
+            }
+        }
+
+        window.toggleComposeField = function(field) {
+            const group = document.getElementById('group-' + field);
+            const toggle = document.getElementById('toggle-' + field);
+            // Use default CSS display for form-group (flex) so layout remains intact
+            if (group) group.style.display = '';
+            if (toggle) toggle.style.display = 'none';
+        }
+
+        function toggleComposeFormat(checkbox) {
+            const htmlDiv = document.getElementById('panel-compose-body-html');
+            const textArea = document.getElementById('panel-compose-body');
+            if (checkbox.checked) {
+                // Switch to HTML
+                htmlDiv.innerHTML = textArea.value.replace(/\n/g, '<br>');
+                htmlDiv.style.display = 'block';
+                textArea.style.display = 'none';
+            } else {
+                // Switch to Text
+                let text = htmlDiv.innerHTML.replace(/<br\s*[\/]?>/gi, '\n').replace(/<\/p>/gi, '\n\n').replace(/<\/div>/gi, '\n');
+                let tempDiv = document.createElement('div');
+                tempDiv.innerHTML = text;
+                textArea.value = tempDiv.innerText || tempDiv.textContent;
+                textArea.style.display = 'block';
+                htmlDiv.style.display = 'none';
             }
         }
 
@@ -1114,17 +1181,22 @@
             
             let to = '';
             let subject = '';
-            let body = '';
+            let bodyText = '';
+            let bodyHtml = '';
             let threadId = '';
             let inReplyTo = '';
             let references = '';
 
             const dateStr = new Date(msg.internalDate).toLocaleString();
 
+            const quoteHtml = msg.html_body || msg.body.replace(/\n/g, '<br>');
+            const quoteText = msg.body;
+
             if (action === 'reply') {
                 to = msg.from;
                 subject = msg.subject.toLowerCase().startsWith('re:') ? msg.subject : `Re: ${msg.subject}`;
-                body = `\n\nOn ${dateStr}, ${msg.from} wrote:\n> ${msg.body.replace(/\n/g, '\n> ')}`;
+                bodyText = `\n\nOn ${dateStr}, ${msg.from} wrote:\n> ${quoteText.replace(/\n/g, '\n> ')}`;
+                bodyHtml = `<br><br>On ${dateStr}, ${msg.from} wrote:<br><blockquote style="border-left: 1px solid #ccc; margin-left: 0; padding-left: 1ex;">${quoteHtml}</blockquote>`;
                 threadId = msg.threadId;
                 inReplyTo = msg.messageId;
                 references = (msg.references ? msg.references + " " : "") + msg.messageId;
@@ -1135,18 +1207,22 @@
                     to = to.split(', ').filter(email => !email.includes(currentAccount.email)).join(', ');
                 }
                 subject = msg.subject.toLowerCase().startsWith('re:') ? msg.subject : `Re: ${msg.subject}`;
-                body = `\n\nOn ${dateStr}, ${msg.from} wrote:\n> ${msg.body.replace(/\n/g, '\n> ')}`;
+                bodyText = `\n\nOn ${dateStr}, ${msg.from} wrote:\n> ${quoteText.replace(/\n/g, '\n> ')}`;
+                bodyHtml = `<br><br>On ${dateStr}, ${msg.from} wrote:<br><blockquote style="border-left: 1px solid #ccc; margin-left: 0; padding-left: 1ex;">${quoteHtml}</blockquote>`;
                 threadId = msg.threadId;
                 inReplyTo = msg.messageId;
                 references = (msg.references ? msg.references + " " : "") + msg.messageId;
             } else if (action === 'forward') {
                 to = '';
                 subject = msg.subject.toLowerCase().startsWith('fwd:') ? msg.subject : `Fwd: ${msg.subject}`;
-                body = `\n\n---------- Forwarded message ----------\nFrom: ${msg.from}\nDate: ${dateStr}\nSubject: ${msg.subject}\nTo: ${msg.to}\n\n${msg.body}`;
+                bodyText = `\n\n---------- Forwarded message ----------\nFrom: ${msg.from}\nDate: ${dateStr}\nSubject: ${msg.subject}\nTo: ${msg.to}\n\n${quoteText}`;
+                bodyHtml = `<br><br>---------- Forwarded message ----------<br>From: ${msg.from}<br>Date: ${dateStr}<br>Subject: ${msg.subject}<br>To: ${msg.to}<br><br>${quoteHtml}`;
                 threadId = '';
                 inReplyTo = '';
                 references = '';
             }
+
+            const useHtml = globalSettings.COMPOSE_AS_HTML !== 'false';
 
             panel.innerHTML = `
                 <div class="composer-in-panel" style="display: flex; flex-direction: column; height: 100%;">
@@ -1159,16 +1235,37 @@
                             <label>From</label>
                             <select id="panel-compose-from"></select>
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" style="position: relative;">
                             <label>To</label>
-                            <input type="text" id="panel-compose-to" placeholder="To" value="${to.replace(/"/g, '&quot;')}">
+                            <div style="display: flex; align-items: center; flex: 1;">
+                                <input type="text" id="panel-compose-to" placeholder="To" value="${to.replace(/"/g, '&quot;')}" style="flex: 1;">
+                                <div style="font-size: 12px; color: var(--text-gray); cursor: pointer; user-select: none; margin-left: 10px; white-space: nowrap;">
+                                    <span id="toggle-cc" onclick="toggleComposeField('cc')" style="margin-left: 10px;">Cc</span>
+                                    <span id="toggle-bcc" onclick="toggleComposeField('bcc')" style="margin-left: 10px;">Bcc</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="group-cc" class="form-group" style="display: none;">
+                            <label>Cc</label>
+                            <input type="text" id="panel-compose-cc" placeholder="Cc" value="">
+                        </div>
+                        <div id="group-bcc" class="form-group" style="display: none;">
+                            <label>Bcc</label>
+                            <input type="text" id="panel-compose-bcc" placeholder="Bcc" value="">
                         </div>
                         <div class="form-group">
                             <label>Subject</label>
                             <input type="text" id="panel-compose-subject" placeholder="Subject" value="${subject.replace(/"/g, '&quot;')}">
                         </div>
-                        <div class="form-group" style="flex: 1; display: flex; flex-direction: column; border: none;">
-                            <textarea id="panel-compose-body" placeholder="Body" style="flex: 1; min-height: 300px; border: 1px solid var(--border-gray); padding: 10px; border-radius: 4px;">${body}</textarea>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                            <label>Body</label>
+                            <label style="font-size: 12px; cursor: pointer; color: var(--text-gray);">
+                                <input type="checkbox" id="panel-compose-is-html" onchange="toggleComposeFormat(this)" ${useHtml ? 'checked' : ''}> HTML Format
+                            </label>
+                        </div>
+                        <div class="form-group" style="flex: 1; display: flex; flex-direction: column; border: none; margin-top: 5px;">
+                            <div id="panel-compose-body-html" contenteditable="true" style="display: ${useHtml ? 'block' : 'none'}; flex: 1; min-height: 300px; border: 1px solid var(--border-gray); padding: 10px; border-radius: 4px; overflow-y: auto; background: white; font-family: sans-serif;">${bodyHtml}</div>
+                            <textarea id="panel-compose-body" placeholder="Body" style="display: ${useHtml ? 'none' : 'block'}; flex: 1; min-height: 300px; border: 1px solid var(--border-gray); padding: 10px; border-radius: 4px;">${bodyText}</textarea>
                         </div>
                         <input type="hidden" id="panel-compose-thread-id" value="${threadId}">
                         <input type="hidden" id="panel-compose-in-reply-to" value="${inReplyTo}">
@@ -1199,10 +1296,18 @@
 
         async function sendEmailFromPanel(event, accId) {
             const fromAccId = document.getElementById('panel-compose-from').value;
+            const isHtml = document.getElementById('panel-compose-is-html').checked;
+            const body = isHtml ? document.getElementById('panel-compose-body-html').innerHTML : document.getElementById('panel-compose-body').value;
+            const cc = document.getElementById('panel-compose-cc').value;
+            const bcc = document.getElementById('panel-compose-bcc').value;
+
             const data = {
                 to: document.getElementById('panel-compose-to').value,
                 subject: document.getElementById('panel-compose-subject').value,
-                body: document.getElementById('panel-compose-body').value,
+                body: body,
+                cc: cc || null,
+                bcc: bcc || null,
+                isHtml: isHtml,
                 threadId: document.getElementById('panel-compose-thread-id').value || null,
                 inReplyTo: document.getElementById('panel-compose-in-reply-to').value || null,
                 references: document.getElementById('panel-compose-references').value || null
@@ -1337,6 +1442,8 @@
             const isSingleView = panel.classList.contains('single-view');
             const discardAction = isSingleView ? 'window.close()' : 'hideMessageDetail()';
             
+            const useHtml = globalSettings.COMPOSE_AS_HTML !== 'false';
+
             panel.innerHTML = `
                 <div class="composer-in-panel" style="display: flex; flex-direction: column; height: 100%;">
                     <div class="composer-header" style="background: none; color: var(--text-dark); border-bottom: 1px solid var(--border-gray); border-radius: 0; padding: 20px;">
@@ -1348,16 +1455,37 @@
                             <label>From</label>
                             <select id="panel-compose-from"></select>
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" style="position: relative;">
                             <label>To</label>
-                            <input type="text" id="panel-compose-to" placeholder="To" value="">
+                            <div style="display: flex; align-items: center; flex: 1;">
+                                <input type="text" id="panel-compose-to" placeholder="To" value="" style="flex: 1;">
+                                <div style="font-size: 12px; color: var(--text-gray); cursor: pointer; user-select: none; margin-left: 10px; white-space: nowrap;">
+                                    <span id="toggle-cc" onclick="toggleComposeField('cc')" style="margin-left: 10px;">Cc</span>
+                                    <span id="toggle-bcc" onclick="toggleComposeField('bcc')" style="margin-left: 10px;">Bcc</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="group-cc" class="form-group" style="display: none;">
+                            <label>Cc</label>
+                            <input type="text" id="panel-compose-cc" placeholder="Cc" value="">
+                        </div>
+                        <div id="group-bcc" class="form-group" style="display: none;">
+                            <label>Bcc</label>
+                            <input type="text" id="panel-compose-bcc" placeholder="Bcc" value="">
                         </div>
                         <div class="form-group">
                             <label>Subject</label>
                             <input type="text" id="panel-compose-subject" placeholder="Subject" value="">
                         </div>
-                        <div class="form-group" style="flex: 1; display: flex; flex-direction: column; border: none;">
-                            <textarea id="panel-compose-body" placeholder="Body" style="flex: 1; min-height: 300px; border: 1px solid var(--border-gray); padding: 10px; border-radius: 4px;"></textarea>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                            <label>Body</label>
+                            <label style="font-size: 12px; cursor: pointer; color: var(--text-gray);">
+                                <input type="checkbox" id="panel-compose-is-html" onchange="toggleComposeFormat(this)" ${useHtml ? 'checked' : ''}> HTML Format
+                            </label>
+                        </div>
+                        <div class="form-group" style="flex: 1; display: flex; flex-direction: column; border: none; margin-top: 5px;">
+                            <div id="panel-compose-body-html" contenteditable="true" style="display: ${useHtml ? 'block' : 'none'}; flex: 1; min-height: 300px; border: 1px solid var(--border-gray); padding: 10px; border-radius: 4px; overflow-y: auto; background: white; font-family: sans-serif;"></div>
+                            <textarea id="panel-compose-body" placeholder="Body" style="display: ${useHtml ? 'none' : 'block'}; flex: 1; min-height: 300px; border: 1px solid var(--border-gray); padding: 10px; border-radius: 4px;"></textarea>
                         </div>
                         <input type="hidden" id="panel-compose-thread-id" value="">
                         <input type="hidden" id="panel-compose-in-reply-to" value="">
