@@ -973,6 +973,10 @@
                     }
                 }
 
+                const isTrashOrSpam = currentLabel === 'TRASH' || currentLabel === 'SPAM';
+                const trashIcon = isTrashOrSpam ? 'fa-trash-can' : 'fa-trash';
+                const trashTitle = isTrashOrSpam ? 'Permanently Delete' : 'Trash';
+
                 panel.innerHTML = `
                     <div class="detail-header">
                         <div class="panel-actions" style="display: flex; gap: 10px; margin-bottom: 15px; align-items: center;">
@@ -980,8 +984,8 @@
                             <button class="action-btn" onclick="renderComposerInPanel('${msg.id}', ${accId}, 'replyAll')" title="Reply All"><i class="fa-solid fa-reply-all"></i></button>
                             <button class="action-btn" onclick="renderComposerInPanel('${msg.id}', ${accId}, 'forward')" title="Forward"><i class="fa-solid fa-share"></i></button>
                             <div style="flex: 1;"></div>
-                            <button class="action-btn" onclick="archiveMessage('${msg.id}', ${accId})" title="Archive"><i class="fa-solid fa-archive"></i></button>
-                            <button class="action-btn" onclick="trashMessage('${msg.id}', ${accId})" title="Trash"><i class="fa-solid fa-trash"></i></button>
+                            <button class="action-btn" onclick="archiveMessage('${msg.id}', ${accId})" title="Archive"><i class="fa-solid fa-box-archive"></i></button>
+                            <button class="action-btn" onclick="trashMessage('${msg.id}', ${accId})" title="${trashTitle}"><i class="fa-solid ${trashIcon}"></i></button>
                             ${isSingleView ? '' : '<span class="back-btn" onclick="hideMessageDetail()" style="margin-left: 10px;"><i class="fa-solid fa-xmark"></i></span>'}
                         </div>
                         <div class="detail-subject">${msg.subject || '(no subject)'}</div>
@@ -1229,6 +1233,25 @@
         }
 
         async function trashMessage(id, accId) {
+            const isTrashOrSpam = currentLabel === 'TRASH' || currentLabel === 'SPAM';
+            
+            if (isTrashOrSpam) {
+                if (globalSettings.WARN_BEFORE_DELETE !== 'false') {
+                    if (!confirm("Are you sure you want to permanently delete this message?")) return;
+                }
+                
+                const res = await fetch(`/accounts/${accId}/messages/${id}`, {
+                    method: 'DELETE'
+                });
+                if (res.ok) {
+                    hideMessageDetail();
+                    refreshMailbox();
+                } else {
+                    alert("Failed to permanently delete message");
+                }
+                return;
+            }
+
             const res = await fetch(`/accounts/${accId}/messages/batch-modify`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
