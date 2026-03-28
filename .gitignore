@@ -11,3 +11,4 @@ venv/
 backend/.cache_dir/
 ralph.yml
 PROMPT.md
+__pycache__/
