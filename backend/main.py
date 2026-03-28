@@ -222,6 +222,40 @@ async def send_email(account_id: int, request: SendEmailRequest, session: Sessio
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/unified/messages")
+async def unified_messages(session: Session = Depends(get_session)):
+    accounts = session.exec(select(Account).where(Account.is_active == True)).all()
+    
+    all_messages = []
+    import asyncio
+    
+    # We could use asyncio to fetch in parallel
+    for account in accounts:
+        try:
+            service = get_gmail_service(account.id, session)
+            if not service: continue
+            
+            results = service.users().messages().list(userId="me", maxResults=10).execute()
+            messages = results.get("messages", [])
+            
+            for msg in messages:
+                m = service.users().messages().get(userId="me", id=msg["id"], format="minimal").execute()
+                all_messages.append({
+                    "id": m["id"],
+                    "snippet": m["snippet"],
+                    "threadId": m["threadId"],
+                    "internalDate": int(m["internalDate"]),
+                    "accountEmail": account.email,
+                    "accountId": account.id
+                })
+        except Exception as e:
+            # For unified view, we might want to just skip failed accounts or log them
+            continue
+    
+    # Sort by date descending
+    all_messages.sort(key=lambda x: x["internalDate"], reverse=True)
+    return all_messages
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
