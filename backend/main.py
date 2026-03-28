@@ -501,6 +501,9 @@ class SendEmailRequest(BaseModel):
     to: str
     subject: str
     body: str
+    cc: Optional[str] = None
+    bcc: Optional[str] = None
+    isHtml: Optional[bool] = False
     threadId: Optional[str] = None
     inReplyTo: Optional[str] = None
     references: Optional[str] = None
@@ -600,9 +603,14 @@ async def send_email(account_id: int, request: SendEmailRequest, session: Sessio
         # Clear cache since message list will change
         cache.clear()
 
-        message = MIMEText(request.body)
+        # Use 'html' subtype if isHtml is true, otherwise default to 'plain'
+        message = MIMEText(request.body, 'html' if request.isHtml else 'plain')
         message["to"] = request.to
         message["subject"] = request.subject
+        if request.cc:
+            message["cc"] = request.cc
+        if request.bcc:
+            message["bcc"] = request.bcc
         if request.inReplyTo:
             message["In-Reply-To"] = request.inReplyTo
         if request.references:
