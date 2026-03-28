@@ -500,6 +500,40 @@ class BatchModifyRequest(BaseModel):
     addLabelIds: list[str] = []
     removeLabelIds: list[str] = []
 
+class BatchDeleteRequest(BaseModel):
+    ids: list[str]
+
+@app.post("/accounts/{account_id}/messages/batch-delete")
+async def batch_delete_messages(account_id: int, request: BatchDeleteRequest, session: Session = Depends(get_session)):
+    if not request.ids:
+        return {"message": "No messages to delete"}
+        
+    service = get_gmail_service(account_id, session)
+    if not service:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    try:
+        cache.clear()
+        service.users().messages().batchDelete(userId="me", body={"ids": request.ids}).execute()
+        return {"message": f"Successfully deleted {len(request.ids)} messages"}
+    except Exception as e:
+        logger.error(f"Error batch deleting messages: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/accounts/{account_id}/messages/{message_id}")
+async def delete_message(account_id: int, message_id: str, session: Session = Depends(get_session)):
+    service = get_gmail_service(account_id, session)
+    if not service:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    try:
+        cache.clear()
+        service.users().messages().delete(userId="me", id=message_id).execute()
+        return {"message": "Message permanently deleted"}
+    except Exception as e:
+        logger.error(f"Error deleting message: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/accounts/{account_id}/messages/batch-modify")
 async def batch_modify_messages(account_id: int, request: BatchModifyRequest, session: Session = Depends(get_session)):
     if not request.ids:

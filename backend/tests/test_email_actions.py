@@ -146,3 +146,48 @@ def test_reply_all_threading(mock_creds_class, mock_build, client: TestClient, s
     assert "to: sender@example.com, cc@example.com" in raw_msg.lower()
     assert "in-reply-to: <msg-id-123@google.com>" in raw_msg.lower()
     assert "references: <ref-id-000@google.com> <msg-id-123@google.com>" in raw_msg.lower()
+
+@patch("backend.main.build")
+@patch("backend.main.Credentials")
+def test_delete_message(mock_creds_class, mock_build, client: TestClient, session: Session):
+    account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
+    session.add(account)
+    session.commit()
+    
+    mock_creds = MagicMock()
+    mock_creds.expired = False
+    mock_creds_class.from_authorized_user_info.return_value = mock_creds
+    
+    mock_service = MagicMock()
+    mock_build.return_value = mock_service
+    mock_service.users().messages().delete().execute.return_value = {}
+    
+    response = client.delete(f"/accounts/{account.id}/messages/msg123")
+    assert response.status_code == 200
+    assert response.json()["message"] == "Message permanently deleted"
+    
+    # Verify Gmail API call
+    mock_service.users().messages().delete.assert_called_with(userId="me", id="msg123")
+
+@patch("backend.main.build")
+@patch("backend.main.Credentials")
+def test_batch_delete_messages(mock_creds_class, mock_build, client: TestClient, session: Session):
+    account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
+    session.add(account)
+    session.commit()
+    
+    mock_creds = MagicMock()
+    mock_creds.expired = False
+    mock_creds_class.from_authorized_user_info.return_value = mock_creds
+    
+    mock_service = MagicMock()
+    mock_build.return_value = mock_service
+    mock_service.users().messages().batchDelete().execute.return_value = {}
+    
+    payload = {"ids": ["msg1", "msg2"]}
+    response = client.post(f"/accounts/{account.id}/messages/batch-delete", json=payload)
+    assert response.status_code == 200
+    assert response.json()["message"] == "Successfully deleted 2 messages"
+    
+    # Verify Gmail API call
+    mock_service.users().messages().batchDelete.assert_called_with(userId="me", body={"ids": ["msg1", "msg2"]})
