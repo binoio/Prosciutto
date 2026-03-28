@@ -189,3 +189,40 @@ def test_unified_inbox(mock_creds_class, mock_build, client: TestClient, session
     response = client.get("/unified/messages")
     assert response.status_code == 200
     assert len(response.json()["messages"]) == 2
+
+@patch("backend.main.build")
+@patch("backend.main.Credentials")
+def test_get_message(mock_creds_class, mock_build, client: TestClient, session: Session):
+    account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
+    session.add(account)
+    session.commit()
+    
+    mock_creds = MagicMock()
+    mock_creds.expired = False
+    mock_creds_class.from_authorized_user_info.return_value = mock_creds
+    
+    mock_service = MagicMock()
+    mock_build.return_value = mock_service
+    
+    import base64
+    body_data = base64.urlsafe_b64encode("Hello world body".encode()).decode()
+    
+    mock_service.users().messages().get().execute.return_value = {
+        "id": "msg123",
+        "snippet": "Hello world snippet",
+        "internalDate": "123456789",
+        "payload": {
+            "headers": [
+                {"name": "Subject", "value": "Test Subject"},
+                {"name": "From", "value": "sender@example.com"}
+            ],
+            "body": {"data": body_data}
+        }
+    }
+    
+    response = client.get(f"/accounts/{account.id}/messages/msg123")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["subject"] == "Test Subject"
+    assert data["from"] == "sender@example.com"
+    assert data["body"] == "Hello world body"

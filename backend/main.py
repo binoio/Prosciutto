@@ -1,3 +1,4 @@
+import base64
 from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.responses import RedirectResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -364,12 +365,49 @@ async def get_message(account_id: int, message_id: str, session: Session = Depen
         raise HTTPException(status_code=404, detail="Account not found")
     
     try:
-        message = service.users().messages().get(userId="me", id=message_id).execute()
-        return message
+        msg = service.users().messages().get(userId="me", id=message_id).execute()
+        
+        headers = msg.get("payload", {}).get("headers", [])
+        subject = get_header(headers, "Subject")
+        from_email = get_header(headers, "From")
+        date = get_header(headers, "Date")
+        snippet = msg.get("snippet", "")
+        
+        # Simple body extraction (text/plain preferred)
+        body = ""
+        payload = msg.get("payload", {})
+        parts = payload.get("parts", [])
+
+        def get_body_from_parts(parts):
+
+            for part in parts:
+                if part.get("mimeType") == "text/plain":
+                    data = part.get("body", {}).get("data", "")
+                    return base64.urlsafe_b64decode(data).decode()
+                elif part.get("parts"):
+                    res = get_body_from_parts(part.get("parts"))
+                    if res: return res
+            return None
+
+        if not parts:
+            data = payload.get("body", {}).get("data", "")
+            if data:
+                body = base64.urlsafe_b64decode(data).decode()
+        else:
+            body = get_body_from_parts(parts) or snippet
+            
+        return {
+            "id": message_id,
+            "subject": subject,
+            "from": from_email,
+            "date": date,
+            "body": body,
+            "snippet": snippet,
+            "internalDate": int(msg.get("internalDate", 0))
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-import base64
 from email.mime.text import MIMEText
 from pydantic import BaseModel
 
