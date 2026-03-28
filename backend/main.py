@@ -99,7 +99,8 @@ async def get_settings(session: Session = Depends(get_session)):
         "THEME": settings_dict.get("THEME", "automatic"),
         "SHOW_DISCLOSURE_IF_SINGLE": settings_dict.get("SHOW_DISCLOSURE_IF_SINGLE", "false"),
         "SHOW_STARRED": settings_dict.get("SHOW_STARRED", "false"),
-        "COMPOSE_NEW_WINDOW": settings_dict.get("COMPOSE_NEW_WINDOW", "true")
+        "COMPOSE_NEW_WINDOW": settings_dict.get("COMPOSE_NEW_WINDOW", "true"),
+        "WARN_BEFORE_DELETE": settings_dict.get("WARN_BEFORE_DELETE", "true")
     }
 
 @app.post("/settings")

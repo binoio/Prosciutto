@@ -37,6 +37,19 @@ def test_get_settings_no_env(client: TestClient, session: Session):
         assert data["is_client_id_env"] is False
         assert data["THEME"] == "automatic"
         assert data["COMPOSE_NEW_WINDOW"] == "true"
+        assert data["WARN_BEFORE_DELETE"] == "true"
+
+def test_update_warn_before_delete_setting(client: TestClient, session: Session):
+    response = client.post("/settings", json={"WARN_BEFORE_DELETE": "false"})
+    assert response.status_code == 200
+    
+    # Verify DB
+    setting = session.query(Setting).filter(Setting.key == "WARN_BEFORE_DELETE").first()
+    assert setting.value == "false"
+    
+    # Verify GET
+    response = client.get("/settings")
+    assert response.json()["WARN_BEFORE_DELETE"] == "false"
 
 def test_update_compose_window_setting(client: TestClient, session: Session):
     response = client.post("/settings", json={"COMPOSE_NEW_WINDOW": "false"})
