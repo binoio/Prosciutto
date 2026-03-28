@@ -1,3 +1,5 @@
+* { box-sizing: border-box; }
+
 :root {
     --bg-white: #ffffff;
     --bg-light-gray: #f1f3f4;
@@ -185,10 +187,14 @@ body.resizing, body.resizing * { cursor: col-resize !important; }
 
 .detail-header { padding: 20px; border-bottom: 1px solid var(--border-gray); position: sticky; top: 0; background: var(--bg-white); z-index: 10; }
 .detail-subject { font-size: 22px; margin-bottom: 15px; }
-.detail-meta { display: flex; align-items: center; justify-content: space-between; font-size: 14px; color: var(--text-gray); }
+.detail-meta { font-size: 14px; color: var(--text-gray); }
+.meta-row { display: flex; margin-bottom: 5px; align-items: baseline; }
+.meta-label { width: 60px; color: var(--text-gray); flex-shrink: 0; }
+.meta-value { color: var(--text-dark); flex: 1; }
+
 .detail-body-container { flex: 1; overflow-y: auto; padding: 20px; }
 .detail-body { line-height: 1.6; white-space: pre-wrap; font-family: sans-serif; }
-#detail-html-frame { width: 100%; height: 100%; border: none; }
+#detail-html-frame { width: 100%; border: none; }
 
 .panel-actions { display: flex; align-items: center; gap: 15px; margin-bottom: 20px; }
 .back-btn { 
@@ -244,8 +250,8 @@ body.resizing, body.resizing * { cursor: col-resize !important; }
 }
 .composer-header { background: #404040; color: #fff; padding: 10px 15px; border-top-left-radius: 8px; border-top-right-radius: 8px; display: flex; justify-content: space-between; }
 .composer-body { padding: 15px; flex: 1; display: flex; flex-direction: column; }
-.form-group { margin-bottom: 15px; border-bottom: 1px solid var(--border-gray); }
-.form-group label { display: block; font-size: 12px; color: var(--text-gray); margin-bottom: 5px; }
+.form-group { margin-bottom: 5px; border-bottom: 1px solid var(--border-gray); display: flex; align-items: baseline; gap: 10px; }
+.form-group label { width: 60px; flex-shrink: 0; font-size: 13px; color: var(--text-gray); }
 .form-group input, .form-group select { border: none; width: 100%; padding: 8px 0; outline: none; background: transparent; color: var(--text-dark); }
 .form-group textarea { border: none; width: 100%; padding: 8px 0; outline: none; resize: none; flex: 1; min-height: 200px; background: transparent; color: var(--text-dark); }
 
