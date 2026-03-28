@@ -269,6 +269,7 @@
             // Populate General Settings
             document.getElementById('client-id').value = globalSettings.GOOGLE_CLIENT_ID || '';
             document.getElementById('client-secret').value = globalSettings.GOOGLE_CLIENT_SECRET || '';
+            document.getElementById('setting-compose-window').checked = globalSettings.COMPOSE_NEW_WINDOW !== 'false';
             
             if (globalSettings.is_client_id_env) {
                 document.getElementById('client-id').disabled = true;
@@ -305,13 +306,15 @@
             const theme = document.getElementById('setting-theme').value;
             const disclosure = document.getElementById('setting-disclosure').checked;
             const remoteImages = document.getElementById('setting-remote-images').checked;
+            const composeWindow = document.getElementById('setting-compose-window').checked;
             const clientId = document.getElementById('client-id').value;
             const clientSecret = document.getElementById('client-secret').value;
             
             const data = {
                 THEME: theme,
                 SHOW_DISCLOSURE_IF_SINGLE: disclosure ? 'true' : 'false',
-                LOAD_REMOTE_IMAGES: remoteImages ? 'true' : 'false'
+                LOAD_REMOTE_IMAGES: remoteImages ? 'true' : 'false',
+                COMPOSE_NEW_WINDOW: composeWindow ? 'true' : 'false'
             };
             
             // Only include credentials if they are not disabled (not from env)
@@ -334,6 +337,7 @@
             globalSettings.THEME = theme;
             globalSettings.SHOW_DISCLOSURE_IF_SINGLE = data.SHOW_DISCLOSURE_IF_SINGLE;
             globalSettings.LOAD_REMOTE_IMAGES = data.LOAD_REMOTE_IMAGES;
+            globalSettings.COMPOSE_NEW_WINDOW = data.COMPOSE_NEW_WINDOW;
             
             updateDisclosureTriangles();
         }
