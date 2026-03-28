@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html data-theme="light">
 <head>
-    <title>Gmail API Web App</title>
+    <title>Prosciutto</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         :root {
@@ -59,10 +59,9 @@
             cursor: pointer; 
             font-size: 14px;
             font-weight: 500;
-            box-shadow: 0 1px 2px 0 rgba(0,0,0,0.302), 0 1px 3px 1px rgba(0,0,0,0.149);
-            transition: box-shadow .2s ease, background-color 0.2s;
+            transition: background-color 0.2s;
         }
-        .compose-btn:hover { box-shadow: 0 4px 4px 0 rgba(0,0,0,0.302), 0 1px 3px 1px rgba(0,0,0,0.149); }
+        .compose-btn:hover { background-color: var(--bg-hover); }
 
         .mailbox-item { 
             padding: 10px 20px 10px 30px; 
@@ -163,8 +162,32 @@
         .message-item.selected {
             background: var(--bg-blue);
         }
-        .message-sender { width: 200px; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .message-snippet { flex: 1; color: var(--text-gray); font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .message-sender { width: var(--sender-width, 200px); font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
+        .message-snippet { flex: 1; color: var(--text-gray); font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 15px; }
+        .message-date { width: 100px; text-align: right; color: var(--text-gray); font-size: 0.85em; flex-shrink: 0; }
+
+        .column-header {
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--text-gray);
+            text-transform: uppercase;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            user-select: none;
+            height: 100%;
+        }
+        .column-header:hover { color: var(--text-dark); }
+        .resizer {
+            width: 5px;
+            height: 100%;
+            cursor: col-resize;
+            margin-left: auto;
+            border-right: 1px solid transparent;
+        }
+        .resizer:hover, .resizing .resizer { border-right: 2px solid var(--bg-blue); }
+        .sort-icon { margin-left: 5px; font-size: 10px; }
+        body.resizing, body.resizing * { cursor: col-resize !important; }
         
         .detail-header { padding: 20px; border-bottom: 1px solid var(--border-gray); position: sticky; top: 0; background: var(--bg-white); z-index: 10; }
         .detail-subject { font-size: 22px; margin-bottom: 15px; }
@@ -182,7 +205,8 @@
         .composer-overlay { 
             position: fixed; bottom: 0; right: 50px; width: 500px; 
             background: var(--bg-white); border-top-left-radius: 8px; border-top-right-radius: 8px;
-            box-shadow: 0 8px 10px 1px rgba(0,0,0,0.14), 0 3px 14px 2px rgba(0,0,0,0.12), 0 5px 5px -3px rgba(0,0,0,0.2);
+            border: 1px solid var(--border-gray);
+            border-bottom: none;
             display: none; flex-direction: column; z-index: 100;
         }
         .composer-header { background: #404040; color: #fff; padding: 10px 15px; border-top-left-radius: 8px; border-top-right-radius: 8px; display: flex; justify-content: space-between; }
@@ -199,7 +223,8 @@
         }
         .modal-container {
             background: var(--bg-white); width: 800px; height: 600px; border-radius: 8px;
-            display: flex; flex-direction: column; box-shadow: 0 24px 38px 3px rgba(0,0,0,0.14), 0 9px 46px 8px rgba(0,0,0,0.12), 0 11px 15px -7px rgba(0,0,0,0.2);
+            border: 1px solid var(--border-gray);
+            display: flex; flex-direction: column;
         }
         .modal-header { padding: 20px; border-bottom: 1px solid var(--border-gray); display: flex; justify-content: space-between; align-items: center; }
         .modal-body { flex: 1; display: flex; overflow: hidden; }
@@ -223,7 +248,11 @@
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(255,255,255,0.9); display: none; align-items: center; justify-content: center; z-index: 200;
         }
-        .prompt-card { background: #fff; padding: 40px; border-radius: 8px; box-shadow: 0 1px 2px 0 rgba(60,64,67,0.302), 0 1px 3px 1px rgba(60,64,67,0.149); text-align: center; }
+        .prompt-card { 
+            background: #fff; padding: 40px; border-radius: 8px; 
+            border: 1px solid var(--border-gray);
+            text-align: center; 
+        }
     </style>
 </head>
 <body>
@@ -284,7 +313,24 @@
             <div id="message-list-container">
                 <div id="message-list-header">
                     <input type="checkbox" id="multi-select-checkbox" onclick="toggleAllMessages(this)">
-                    <div id="selection-info" style="margin-left: 20px; font-size: 14px; color: var(--text-gray); display: none; align-items: center; gap: 20px;">
+                    <div id="refresh-btn" onclick="refreshMailbox()" title="Refresh" style="margin-left: 15px; cursor: pointer; color: var(--text-gray); font-size: 16px; margin-right: 20px;">
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </div>
+                    
+                    <div class="column-header" style="width: var(--sender-width, 200px); flex-shrink: 0;" onclick="sortMessages('from')">
+                        From <span id="sort-from" class="sort-icon"></span>
+                        <div class="resizer" data-column="sender"></div>
+                    </div>
+                    
+                    <div class="column-header" style="flex: 1;" onclick="sortMessages('subject')">
+                        Subject <span id="sort-subject" class="sort-icon"></span>
+                    </div>
+                    
+                    <div class="column-header" style="width: 100px; justify-content: flex-end; flex-shrink: 0;" onclick="sortMessages('internalDate')">
+                        Date <span id="sort-internalDate" class="sort-icon"></span>
+                    </div>
+
+                    <div id="selection-info" style="position: absolute; left: 80px; background: var(--bg-white); height: 100%; display: none; align-items: center; gap: 20px; z-index: 10; padding-right: 20px;">
                         <span id="selection-count">0</span> messages selected
                         <select id="action-dropdown" onchange="performBatchAction(this.value)" style="padding: 5px 10px; border-radius: 4px; border: 1px solid var(--border-gray); background: var(--bg-white); cursor: pointer;">
                             <option value="">Actions...</option>
@@ -395,7 +441,7 @@
 
     <div id="first-run-prompt">
         <div class="prompt-card">
-            <h2>Welcome to Gmail App</h2>
+            <h2>Welcome to Prosciutto</h2>
             <p>Please configure your Google API credentials and add an account to get started.</p>
             <button class="compose-btn" onclick="openSettings(); document.getElementById('first-run-prompt').style.display='none'">Go to Settings</button>
         </div>
@@ -407,8 +453,16 @@
         let accounts = [];
         let nextPageToken = null;
         let globalSettings = {};
+        let currentMessages = [];
+        let sortColumn = 'internalDate';
+        let sortOrder = 'desc';
+        let columnWidths = {
+            sender: 200,
+            subject: 0 // 0 means flex: 1
+        };
 
         async function init() {
+            document.documentElement.style.setProperty('--sender-width', `${columnWidths.sender}px`);
             const urlParams = new URLSearchParams(window.location.search);
             const messageId = urlParams.get('messageId');
             const accountId = urlParams.get('accountId');
@@ -545,6 +599,17 @@
 
             updateDisclosureTriangles();
             renderAccountsInSettings();
+
+            // Hide mailbox list and compose button if no accounts
+            const mailboxList = document.getElementById('mailbox-list');
+            const composeArea = document.getElementById('compose-area');
+            if (accounts.length === 0) {
+                mailboxList.style.display = 'none';
+                composeArea.style.display = 'none';
+            } else {
+                mailboxList.style.display = 'block';
+                composeArea.style.display = 'block';
+            }
         }
 
         function updateDisclosureTriangles() {
@@ -616,7 +681,7 @@
             }
         }
 
-        async function loadMailbox(label, append = false) {
+        async function loadMailbox(label, append = false, refresh = false) {
             if (!append) {
                 currentLabel = label;
                 currentAccountId = null;
@@ -639,6 +704,7 @@
             let url = `/unified/messages?`;
             if (label) url += `label=${label}&`;
             if (append && nextPageToken) url += `page_token=${nextPageToken}&`;
+            if (refresh) url += `refresh=true&`;
             
             const res = await fetch(url);
             const data = await res.json();
@@ -648,7 +714,7 @@
             renderMessages(data.messages, append);
         }
 
-        async function loadAccountMailbox(accId, email, label, append = false) {
+        async function loadAccountMailbox(accId, email, label, append = false, refresh = false) {
             if (!append) {
                 currentLabel = label;
                 currentAccountId = accId;
@@ -662,6 +728,7 @@
             let url = `/accounts/${accId}/messages?`;
             if (label) url += `label=${label}&`;
             if (append && nextPageToken) url += `page_token=${nextPageToken}&`;
+            if (refresh) url += `refresh=true&`;
             
             const res = await fetch(url);
             const data = await res.json();
@@ -682,7 +749,7 @@
             }
         }
 
-        async function performSearch(append = false) {
+        async function performSearch(append = false, refresh = false) {
             const query = document.getElementById('search-input').value;
             if (!query && !append) return;
 
@@ -707,6 +774,7 @@
             try {
                 let url = `/accounts/${accId}/search?q=${encodeURIComponent(query)}&max_results=20`;
                 if (append && nextPageToken) url += `&page_token=${nextPageToken}`;
+                if (refresh) url += `&refresh=true`;
                 
                 const res = await fetch(url);
                 if (!res.ok) {
@@ -732,13 +800,33 @@
                 list.innerHTML = '';
                 document.getElementById('multi-select-checkbox').checked = false;
                 document.getElementById('selection-info').style.display = 'none';
+                currentMessages = [];
             }
             if (!messages || messages.length === 0) {
                 if (!append) list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-gray);">No messages found.</div>';
                 return;
             }
             
-            messages.forEach(msg => {
+            if (append) {
+                currentMessages = currentMessages.concat(messages);
+            } else {
+                currentMessages = messages;
+            }
+
+            // Apply current sort
+            const sorted = [...currentMessages].sort((a, b) => {
+                let valA = a[sortColumn] || '';
+                let valB = b[sortColumn] || '';
+                if (typeof valA === 'string') valA = valA.toLowerCase();
+                if (typeof valB === 'string') valB = valB.toLowerCase();
+                
+                if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+                if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            list.innerHTML = ''; // Clear for re-render if sorting or appending
+            sorted.forEach(msg => {
                 const item = document.createElement('div');
                 item.className = 'message-item';
                 item.id = `msg-${msg.id}`;
@@ -753,9 +841,60 @@
                 item.ondblclick = () => openMessageInNewWindow(msg.id, accountId);
                 list.appendChild(item);
             });
+
+            updateSortIcons();
+            initResizers();
         }
-                item.ondblclick = () => openMessageInNewWindow(msg.id, msg.accountId || msg.account_id || currentAccountId);
-                list.appendChild(item);
+
+        function updateSortIcons() {
+            document.querySelectorAll('.sort-icon').forEach(el => el.innerHTML = '');
+            const icon = sortOrder === 'asc' ? '<i class="fa-solid fa-chevron-up"></i>' : '<i class="fa-solid fa-chevron-down"></i>';
+            const target = document.getElementById(`sort-${sortColumn}`);
+            if (target) target.innerHTML = icon;
+        }
+
+        function sortMessages(column) {
+            if (sortColumn === column) {
+                sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortOrder = 'asc';
+            }
+            renderMessages(currentMessages, false);
+        }
+
+        let isResizing = false;
+        function initResizers() {
+            const resizers = document.querySelectorAll('.resizer');
+            resizers.forEach(resizer => {
+                resizer.onmousedown = (e) => {
+                    e.stopPropagation();
+                    isResizing = true;
+                    const column = resizer.getAttribute('data-column');
+                    const startX = e.pageX;
+                    const startWidth = columnWidths[column];
+                    
+                    document.body.classList.add('resizing');
+
+                    const onMouseMove = (e) => {
+                        if (!isResizing) return;
+                        const width = startWidth + (e.pageX - startX);
+                        if (width > 50) {
+                            columnWidths[column] = width;
+                            document.documentElement.style.setProperty(`--${column}-width`, `${width}px`);
+                        }
+                    };
+
+                    const onMouseUp = () => {
+                        isResizing = false;
+                        document.body.classList.remove('resizing');
+                        document.removeEventListener('mousemove', onMouseMove);
+                        document.removeEventListener('mouseup', onMouseUp);
+                    };
+
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup', onMouseUp);
+                };
             });
         }
 
@@ -805,7 +944,7 @@
             
             for (const accId in messageIdsByAccount) {
                 const ids = messageIdsByAccount[accId];
-                await fetch(`/accounts/${accId}/messages/batch-modify`, {
+                const res = await fetch(`/accounts/${accId}/messages/batch-modify`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -814,6 +953,16 @@
                         removeLabelIds: removeLabelIds
                     })
                 });
+
+                if (res.status === 403) {
+                    const error = await res.json();
+                    alert(error.detail || "Insufficient permissions. Please re-authenticate.");
+                    return;
+                } else if (!res.ok) {
+                    const error = await res.json();
+                    alert("Error: " + (error.detail || res.statusText));
+                    return;
+                }
             }
             
             // Reload current view
@@ -826,6 +975,23 @@
             
             document.getElementById('action-dropdown').value = '';
         }
+
+        function refreshMailbox() {
+            const btn = document.querySelector('#refresh-btn i');
+            btn.classList.add('fa-spin');
+            
+            const callback = () => {
+                setTimeout(() => btn.classList.remove('fa-spin'), 500);
+            };
+
+            if (currentLabel === 'SEARCH') performSearch(false, true).then(callback);
+            else if (currentAccountId === null) loadMailbox(currentLabel, false, true).then(callback);
+            else {
+                const acc = accounts.find(a => a.id == currentAccountId);
+                loadAccountMailbox(currentAccountId, acc ? acc.email : '', currentLabel, false, true).then(callback);
+            }
+        }
+
         async function showMessage(id, accId, isSingleView = false) {
             if (!accId) {
                 accId = accounts[0].id;
@@ -885,13 +1051,6 @@
             if (!accId) accId = accounts[0].id;
             const url = `?messageId=${id}&accountId=${accId}`;
             window.open(url, '_blank', 'width=800,height=600');
-        }
-                        iframe.style.height = doc.body.scrollHeight + 'px';
-                    };
-                }
-            } catch (err) {
-                panel.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--accent-red);">Failed to load message.</div>';
-            }
         }
 
         function hideMessageDetail() {

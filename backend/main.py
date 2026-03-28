@@ -1,4 +1,5 @@
 import base64
+import logging
 from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.responses import RedirectResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -14,9 +15,14 @@ from dotenv import load_dotenv
 # Load .env file if it exists
 load_dotenv()
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from sqlmodel import Session, select
 from backend.db import create_db_and_tables, get_session
 from backend.models import Account, Setting
@@ -33,6 +39,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.compose",
     "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/userinfo.email",
     "openid"
 ]
@@ -45,7 +52,7 @@ async def lifespan(app: FastAPI):
     yield
     # Cleanup
 
-app = FastAPI(title="Gmail API Web App", lifespan=lifespan)
+app = FastAPI(title="Prosciutto", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -53,8 +60,8 @@ def get_client_config():
     client_id = os.getenv("GOOGLE_CLIENT_ID")
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
     
-    # Using local engine from db.py
-    from db import engine
+    # Using local engine from backend.db
+    from backend.db import engine
     with Session(engine) as session:
         client_id_setting = session.exec(select(Setting).where(Setting.key == "GOOGLE_CLIENT_ID")).first()
         client_secret_setting = session.exec(select(Setting).where(Setting.key == "GOOGLE_CLIENT_SECRET")).first()
@@ -214,21 +221,26 @@ async def list_accounts(session: Session = Depends(get_session)):
 def get_gmail_service(account_id: int, session: Session):
     account = session.get(Account, account_id)
     if not account:
+        logger.error(f"Account {account_id} not found in database")
         return None
     
-    creds_dict = json.loads(account.credentials_json)
-    creds = Credentials.from_authorized_user_info(creds_dict, SCOPES)
-    
-    # Check if creds need refresh
-    if creds and creds.expired and creds.refresh_token:
-        from google.auth.transport.requests import Request as GoogleRequest
-        creds.refresh(GoogleRequest())
-        # Update DB with new credentials
-        account.credentials_json = creds.to_json()
-        session.add(account)
-        session.commit()
-    
-    return build("gmail", "v1", credentials=creds)
+    try:
+        creds_dict = json.loads(account.credentials_json)
+        creds = Credentials.from_authorized_user_info(creds_dict, SCOPES)
+        
+        # Check if creds need refresh
+        if creds and creds.expired and creds.refresh_token:
+            from google.auth.transport.requests import Request as GoogleRequest
+            creds.refresh(GoogleRequest())
+            # Update DB with new credentials
+            account.credentials_json = creds.to_json()
+            session.add(account)
+            session.commit()
+        
+        return build("gmail", "v1", credentials=creds)
+    except Exception as e:
+        logger.error(f"Failed to build Gmail service for account {account_id}: {str(e)}")
+        return None
 
 def get_header(headers, name):
     for header in headers:
@@ -276,15 +288,16 @@ def get_detailed_messages_batch(service, messages_meta, format="metadata", metad
     return results
 
 @app.get("/accounts/{account_id}/messages")
-async def list_messages(account_id: int, label: str = None, page_token: str = None, session: Session = Depends(get_session)):
+async def list_messages(account_id: int, label: str = None, page_token: str = None, refresh: bool = False, session: Session = Depends(get_session)):
     service = get_gmail_service(account_id, session)
     if not service:
         raise HTTPException(status_code=404, detail="Account not found")
     
     cache_key = f"messages_{account_id}_{label}_{page_token}"
-    cached_result = cache.get(cache_key)
-    if cached_result:
-        return cached_result
+    if not refresh:
+        cached_result = cache.get(cache_key)
+        if cached_result:
+            return cached_result
 
     try:
         kwargs = {"userId": "me", "maxResults": 20}
@@ -297,7 +310,7 @@ async def list_messages(account_id: int, label: str = None, page_token: str = No
         messages_meta = results.get("messages", [])
         next_page_token = results.get("nextPageToken")
         
-        detailed_messages = get_detailed_messages_batch(service, messages_meta, format="minimal")
+        detailed_messages = get_detailed_messages_batch(service, messages_meta, format="metadata", metadata_headers=["Subject", "From", "Date"])
         
         response_data = {
             "messages": detailed_messages,
@@ -367,6 +380,19 @@ async def get_message(account_id: int, message_id: str, session: Session = Depen
     try:
         msg = service.users().messages().get(userId="me", id=message_id).execute()
         
+        # If the message is unread, mark it as read
+        if "UNREAD" in msg.get("labelIds", []):
+            try:
+                service.users().messages().modify(
+                    userId="me", 
+                    id=message_id, 
+                    body={"removeLabelIds": ["UNREAD"]}
+                ).execute()
+                # Clear cache so the unread state is updated in the list
+                cache.clear()
+            except Exception as e:
+                logger.warning(f"Failed to mark message {message_id} as read: {str(e)}")
+
         headers = msg.get("payload", {}).get("headers", [])
         subject = get_header(headers, "Subject")
         from_email = get_header(headers, "From")
@@ -435,21 +461,48 @@ class BatchModifyRequest(BaseModel):
 
 @app.post("/accounts/{account_id}/messages/batch-modify")
 async def batch_modify_messages(account_id: int, request: BatchModifyRequest, session: Session = Depends(get_session)):
+    if not request.ids:
+        return {"message": "No messages to update"}
+        
     service = get_gmail_service(account_id, session)
     if not service:
-        raise HTTPException(status_code=404, detail="Account not found")
+        logger.error(f"Service building failed for account {account_id}")
+        raise HTTPException(status_code=404, detail="Account not found or service building failed")
     
     try:
-        service.users().messages().batchModify(
-            userId="me", 
-            body={
-                "ids": request.ids,
-                "addLabelIds": request.addLabelIds,
-                "removeLabelIds": request.removeLabelIds
-            }
-        ).execute()
+        # Clear all message-related caches since we're modifying state
+        cache.clear()
+        
+        # If the action is specifically "Move to Trash", use the dedicated .trash() endpoint
+        # The frontend sends addLabelIds: ["TRASH"] for this action.
+        if "TRASH" in request.addLabelIds:
+            logger.info(f"Trashing {len(request.ids)} messages for account {account_id}")
+            for msg_id in request.ids:
+                service.users().messages().trash(userId="me", id=msg_id).execute()
+        else:
+            # For other label-based actions, batchModify is more efficient
+            logger.info(f"Batch modifying {len(request.ids)} messages for account {account_id}")
+            service.users().messages().batchModify(
+                userId="me", 
+                body={
+                    "ids": request.ids,
+                    "addLabelIds": request.addLabelIds,
+                    "removeLabelIds": request.removeLabelIds
+                }
+            ).execute()
+            
         return {"message": f"Updated {len(request.ids)} messages"}
+    except HttpError as e:
+        if e.resp.status == 403:
+            logger.error(f"Insufficient permissions for account {account_id}: {str(e)}")
+            raise HTTPException(
+                status_code=403, 
+                detail="Insufficient permissions. Please re-authenticate this account in Settings to grant required scopes."
+            )
+        logger.error(f"Gmail API error for account {account_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
+        logger.error(f"Error in batch_modify_messages for account {account_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/accounts/{account_id}/send")
@@ -459,6 +512,9 @@ async def send_email(account_id: int, request: SendEmailRequest, session: Sessio
         raise HTTPException(status_code=404, detail="Account not found")
     
     try:
+        # Clear cache since message list will change
+        cache.clear()
+
         message = MIMEText(request.body)
         message["to"] = request.to
         message["subject"] = request.subject
@@ -475,11 +531,12 @@ async def send_email(account_id: int, request: SendEmailRequest, session: Sessio
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/unified/messages")
-async def unified_messages(label: str = None, session: Session = Depends(get_session)):
+async def unified_messages(label: str = None, refresh: bool = False, session: Session = Depends(get_session)):
     cache_key = f"unified_messages_{label}"
-    cached_result = cache.get(cache_key)
-    if cached_result:
-        return cached_result
+    if not refresh:
+        cached_result = cache.get(cache_key)
+        if cached_result:
+            return cached_result
 
     accounts = session.exec(select(Account).where(Account.is_active)).all()
     
@@ -499,7 +556,7 @@ async def unified_messages(label: str = None, session: Session = Depends(get_ses
             results = service.users().messages().list(**kwargs).execute()
             messages_meta = results.get("messages", [])
             
-            detailed_messages = get_detailed_messages_batch(service, messages_meta, format="minimal")
+            detailed_messages = get_detailed_messages_batch(service, messages_meta, format="metadata", metadata_headers=["Subject", "From", "Date"])
             
             for m in detailed_messages:
                 m["accountEmail"] = account.email

@@ -1,4 +1,4 @@
-# Gmail API Web App
+# Prosciutto
 
 A FastAPI-based web application that allows managing multiple Gmail accounts, viewing a unified inbox, and composing/sending emails.
 

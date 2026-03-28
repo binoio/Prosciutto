@@ -8,7 +8,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}=======================================${NC}"
-echo -e "${BLUE}   Gmail API App GCP Management Tool   ${NC}"
+echo -e "${BLUE}   Prosciutto GCP Management Tool   ${NC}"
 echo -e "${BLUE}=======================================${NC}"
 
 function show_menu() {
@@ -107,8 +107,8 @@ function toggle_gmail_api() {
 }
 
 function deploy_stack() {
-    read -p "Enter Service Name (default: gmail-app): " SERVICE_NAME
-    SERVICE_NAME=${SERVICE_NAME:-gmail-app}
+    read -p "Enter Service Name (default: prosciutto): " SERVICE_NAME
+    SERVICE_NAME=${SERVICE_NAME:-prosciutto}
     read -p "Enter Region (default: us-central1): " REGION
     REGION=${REGION:-us-central1}
     

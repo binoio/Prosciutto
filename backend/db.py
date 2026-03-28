@@ -1,7 +1,7 @@
 from sqlmodel import SQLModel, create_engine, Session
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./gmail_app.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./prosciutto.db")
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
