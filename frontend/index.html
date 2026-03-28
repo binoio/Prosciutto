@@ -129,6 +129,7 @@
             border-left: 1px solid var(--border-gray);
         }
         #message-detail-panel.open { width: 60%; }
+        #message-detail-panel.single-view { width: 100%; border-left: none; }
 
         .message-item { 
             padding: 10px 20px; 
@@ -377,6 +378,24 @@
         let globalSettings = {};
 
         async function init() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const messageId = urlParams.get('messageId');
+            const accountId = urlParams.get('accountId');
+
+            if (messageId && accountId) {
+                // Single-message view mode
+                document.getElementById('sidebar').style.display = 'none';
+                document.getElementById('header').style.display = 'none';
+                document.getElementById('message-list-container').style.display = 'none';
+                const panel = document.getElementById('message-detail-panel');
+                panel.classList.add('open', 'single-view');
+
+                await loadSettings();
+                await loadAccounts();
+                showMessage(messageId, accountId, true);
+                return;
+            }
+
             await loadSettings();
             await loadAccounts();
             if (accounts.length === 0) {
@@ -696,11 +715,12 @@
                     <div class="message-date">${new Date(msg.internalDate).toLocaleDateString()}</div>
                 `;
                 item.onclick = () => showMessage(msg.id, msg.accountId || msg.account_id || currentAccountId);
+                item.ondblclick = () => openMessageInNewWindow(msg.id, msg.accountId || msg.account_id || currentAccountId);
                 list.appendChild(item);
             });
         }
 
-        async function showMessage(id, accId) {
+        async function showMessage(id, accId, isSingleView = false) {
             if (!accId) {
                 accId = accounts[0].id;
             }
@@ -712,6 +732,7 @@
 
             const panel = document.getElementById('message-detail-panel');
             panel.classList.add('open');
+            if (isSingleView) panel.classList.add('single-view');
             panel.innerHTML = '<div style="padding: 20px; text-align: center;">Loading message...</div>';
 
             try {
@@ -721,7 +742,7 @@
                 panel.innerHTML = `
                     <div class="detail-header">
                         <div class="panel-actions">
-                            <span class="back-btn" onclick="hideMessageDetail()"><i class="fa-solid fa-xmark"></i></span>
+                            ${isSingleView ? '' : '<span class="back-btn" onclick="hideMessageDetail()"><i class="fa-solid fa-xmark"></i></span>'}
                         </div>
                         <div class="detail-subject">${msg.subject || '(no subject)'}</div>
                         <div class="detail-meta">
@@ -746,6 +767,19 @@
                     
                     // Adjust iframe height to content
                     iframe.onload = function() {
+                        iframe.style.height = doc.body.scrollHeight + 'px';
+                    };
+                }
+            } catch (err) {
+                panel.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--accent-red);">Failed to load message.</div>';
+            }
+        }
+
+        function openMessageInNewWindow(id, accId) {
+            if (!accId) accId = accounts[0].id;
+            const url = `?messageId=${id}&accountId=${accId}`;
+            window.open(url, '_blank', 'width=800,height=600');
+        }
                         iframe.style.height = doc.body.scrollHeight + 'px';
                     };
                 }
