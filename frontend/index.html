@@ -155,6 +155,10 @@
                             <input type="checkbox" id="setting-warn-delete" style="width: auto;" onchange="saveAllSettings()">
                             <label for="setting-warn-delete">Warn before permanently deleting messages</label>
                         </div>
+                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+                            <input type="checkbox" id="setting-compose-html" style="width: auto;" onchange="saveAllSettings()">
+                            <label for="setting-compose-html">Compose new messages as HTML</label>
+                        </div>
                     </div>
 
                     <!-- Accounts Tab -->
@@ -281,6 +285,7 @@
             document.getElementById('client-id').value = globalSettings.GOOGLE_CLIENT_ID || '';
             document.getElementById('client-secret').value = globalSettings.GOOGLE_CLIENT_SECRET || '';
             document.getElementById('setting-compose-window').checked = globalSettings.COMPOSE_NEW_WINDOW !== 'false';
+            document.getElementById('setting-compose-html').checked = globalSettings.COMPOSE_AS_HTML !== 'false';
             
             const warnDeleteCheckbox = document.getElementById('setting-warn-delete');
             warnDeleteCheckbox.checked = globalSettings.WARN_BEFORE_DELETE !== 'false';
@@ -332,19 +337,20 @@
             const starred = document.getElementById('setting-starred').checked;
             const remoteImages = document.getElementById('setting-remote-images').checked;
             const composeWindow = document.getElementById('setting-compose-window').checked;
+            const composeHtml = document.getElementById('setting-compose-html').checked;
             const warnDelete = document.getElementById('setting-warn-delete').checked;
             const clientId = document.getElementById('client-id').value;
             const clientSecret = document.getElementById('client-secret').value;
-            
+
             const data = {
                 THEME: theme,
                 SHOW_DISCLOSURE_IF_SINGLE: disclosure ? 'true' : 'false',
                 SHOW_STARRED: starred ? 'true' : 'false',
                 LOAD_REMOTE_IMAGES: remoteImages ? 'true' : 'false',
                 COMPOSE_NEW_WINDOW: composeWindow ? 'true' : 'false',
+                COMPOSE_AS_HTML: composeHtml ? 'true' : 'false',
                 WARN_BEFORE_DELETE: warnDelete ? 'true' : 'false'
             };
-            
             // Only include credentials if they are not disabled (not from env)
             if (!document.getElementById('client-id').disabled) {
                 data.GOOGLE_CLIENT_ID = clientId;
@@ -367,6 +373,7 @@
             globalSettings.SHOW_STARRED = data.SHOW_STARRED;
             globalSettings.LOAD_REMOTE_IMAGES = data.LOAD_REMOTE_IMAGES;
             globalSettings.COMPOSE_NEW_WINDOW = data.COMPOSE_NEW_WINDOW;
+            globalSettings.COMPOSE_AS_HTML = data.COMPOSE_AS_HTML;
 
             updateDisclosureTriangles();
             updateStarredMailboxVisibility();
