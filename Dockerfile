@@ -14,11 +14,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ /app/backend/
 COPY frontend/ /app/frontend/
 
-# Set the working directory to the backend for running the app
-WORKDIR /app/backend
+# Set the working directory to the root of the app
+WORKDIR /app
 
 # Make port 8000 available to the world outside this container
 EXPOSE 8000
 
-# Run main.py when the container launches
-CMD ["python", "main.py"]
+# Run uvicorn when the container launches
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
