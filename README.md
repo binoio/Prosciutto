@@ -10,6 +10,37 @@ A FastAPI-based web application that allows managing multiple Gmail accounts, vi
 - **Compose & Send**: Send emails from any of the connected accounts.
 - **Interactive GCP Scripts**: Easy project setup, API management, and deployment.
 - **Mock Tests**: Comprehensive test suite with Google API mocks.
+- **GitHub Actions**: Continuous integration with automated tests on every push.
+
+## Technical Architecture
+
+- **Backend**: Python 3.11 with [FastAPI](https://fastapi.tiangolo.com/).
+  - **Database**: [SQLModel](https://sqlmodel.tiangolo.com/) (SQLAlchemy + Pydantic) with SQLite for local storage of settings and account tokens.
+  - **Caching**: [DiskCache](http://www.grantjenks.com/docs/diskcache/) for improved performance when fetching message details.
+  - **Gmail API**: Integrated via `google-api-python-client` with OAuth2 flow.
+- **Frontend**: Vanilla HTML5, CSS3, and JavaScript.
+  - **UI**: Modern design with responsive sidebar and multi-tab settings modal.
+  - **Icons**: [Font Awesome 6](https://fontawesome.com/).
+- **CI/CD**: GitHub Actions for automated testing.
+
+## API Endpoints
+
+### Authentication
+- `GET /auth/login`: Initiates OAuth2 flow.
+- `GET /auth/callback`: Handles Google OAuth2 callback and stores credentials.
+
+### Accounts & Settings
+- `GET /accounts`: List all connected accounts.
+- `DELETE /accounts/{id}`: Remove a connected account.
+- `GET /settings`: Get current app settings (GCP credentials, theme).
+- `POST /settings`: Update app settings.
+
+### Gmail Operations
+- `GET /unified/messages`: Unified inbox across all accounts.
+- `GET /accounts/{id}/messages`: List messages for a specific account.
+- `GET /accounts/{id}/messages/{msg_id}`: Get full details of a specific message.
+- `GET /accounts/{id}/search`: Search mail within an account.
+- `POST /accounts/{id}/send`: Compose and send an email.
 
 ## Prerequisites
 
