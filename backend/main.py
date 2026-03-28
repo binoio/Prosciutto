@@ -97,7 +97,8 @@ async def get_settings(session: Session = Depends(get_session)):
         "is_client_secret_env": env_client_secret is not None,
         # Default appearance settings
         "THEME": settings_dict.get("THEME", "automatic"),
-        "SHOW_DISCLOSURE_IF_SINGLE": settings_dict.get("SHOW_DISCLOSURE_IF_SINGLE", "false")
+        "SHOW_DISCLOSURE_IF_SINGLE": settings_dict.get("SHOW_DISCLOSURE_IF_SINGLE", "false"),
+        "COMPOSE_NEW_WINDOW": settings_dict.get("COMPOSE_NEW_WINDOW", "true")
     }
 
 @app.post("/settings")

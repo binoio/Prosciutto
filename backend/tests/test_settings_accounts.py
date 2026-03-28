@@ -36,6 +36,19 @@ def test_get_settings_no_env(client: TestClient, session: Session):
         assert data["GOOGLE_CLIENT_ID"] == ""
         assert data["is_client_id_env"] is False
         assert data["THEME"] == "automatic"
+        assert data["COMPOSE_NEW_WINDOW"] == "true"
+
+def test_update_compose_window_setting(client: TestClient, session: Session):
+    response = client.post("/settings", json={"COMPOSE_NEW_WINDOW": "false"})
+    assert response.status_code == 200
+    
+    # Verify DB
+    setting = session.query(Setting).filter(Setting.key == "COMPOSE_NEW_WINDOW").first()
+    assert setting.value == "false"
+    
+    # Verify GET
+    response = client.get("/settings")
+    assert response.json()["COMPOSE_NEW_WINDOW"] == "false"
 
 def test_get_settings_with_env(client: TestClient, session: Session):
     # Mock os.getenv
