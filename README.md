@@ -7,6 +7,7 @@ A FastAPI-based web application that allows managing multiple Gmail accounts, vi
 - **Multi-Account Support**: Add multiple Google accounts via OAuth2.
 - **Unified Inbox**: View an aggregate list of emails from all connected accounts.
 - **Individual Inbox View**: View emails for a specific account.
+- **Message Detail Panel**: Polished side panel that opens when selecting a message, with support for full HTML rendering and plain text fallbacks.
 - **Compose & Send**: Send emails from any of the connected accounts.
 - **Interactive GCP Scripts**: Easy project setup, API management, and deployment.
 - **Mock Tests**: Comprehensive test suite with Google API mocks.

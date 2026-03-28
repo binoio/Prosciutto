@@ -114,7 +114,21 @@
         }
         #settings-trigger:hover { background: var(--bg-hover); }
 
-        #content { flex: 1; overflow-y: auto; padding: 0; }
+        #content { flex: 1; display: flex; position: relative; overflow: hidden; }
+
+        #message-list-container { flex: 1; overflow-y: auto; border-right: 1px solid var(--border-gray); }
+        #message-list { width: 100%; }
+
+        #message-detail-panel { 
+            width: 0; 
+            overflow: hidden; 
+            transition: width 0.3s ease; 
+            background: var(--bg-white);
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid var(--border-gray);
+        }
+        #message-detail-panel.open { width: 60%; }
 
         .message-item { 
             padding: 10px 20px; 
@@ -126,18 +140,23 @@
         }
         .message-item:hover { 
             background: var(--bg-hover); 
-            box-shadow: inset 1px 0 0 #dadce0, inset -1px 0 0 #dadce0, 0 1px 2px 0 rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15);
-            z-index: 1;
+        }
+        .message-item.selected {
+            background: var(--bg-blue);
         }
         .message-sender { width: 200px; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .message-snippet { flex: 1; color: var(--text-gray); font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        #message-detail { display: none; padding: 20px; }
-        .detail-header { border-bottom: 1px solid var(--border-gray); padding-bottom: 15px; margin-bottom: 20px; }
-        .detail-subject { font-size: 22px; margin-bottom: 10px; }
+        
+        .detail-header { padding: 20px; border-bottom: 1px solid var(--border-gray); position: sticky; top: 0; background: var(--bg-white); z-index: 10; }
+        .detail-subject { font-size: 22px; margin-bottom: 15px; }
         .detail-meta { display: flex; align-items: center; justify-content: space-between; font-size: 14px; color: var(--text-gray); }
+        .detail-body-container { flex: 1; overflow-y: auto; padding: 20px; }
         .detail-body { line-height: 1.6; white-space: pre-wrap; font-family: sans-serif; }
+        #detail-html-frame { width: 100%; height: 100%; border: none; }
+        
+        .panel-actions { display: flex; align-items: center; gap: 15px; margin-bottom: 20px; }
         .back-btn { 
-            cursor: pointer; padding: 8px 12px; border-radius: 50%; color: var(--text-gray); font-size: 18px; margin-right: 15px;
+            cursor: pointer; padding: 8px 12px; border-radius: 50%; color: var(--text-gray); font-size: 18px;
         }
         .back-btn:hover { background: var(--bg-hover); }
 
@@ -243,24 +262,17 @@
             <div id="settings-trigger" onclick="openSettings()"><i class="fa-solid fa-gear"></i></div>
         </div>
         <div id="content">
-            <div id="message-list">
-                <!-- Messages will be loaded here -->
-            </div>
-            <div id="message-detail">
-                <div class="detail-header">
-                    <div style="display: flex; align-items: center; margin-bottom: 20px;">
-                        <span class="back-btn" onclick="hideMessageDetail()"><i class="fa-solid fa-arrow-left"></i></span>
-                        <div class="detail-subject" id="detail-subject"></div>
-                    </div>
-                    <div class="detail-meta">
-                        <div id="detail-from"></div>
-                        <div id="detail-date"></div>
-                    </div>
+            <div id="message-list-container">
+                <div id="message-list">
+                    <!-- Messages will be loaded here -->
                 </div>
-                <div class="detail-body" id="detail-body"></div>
+                <div style="text-align: center; padding: 20px;">
+                    <button id="load-more-btn" class="compose-btn" style="width: auto; padding: 10px 30px; display: none;" onclick="loadMore()">Load More</button>
+                </div>
             </div>
-            <div style="text-align: center; padding: 20px;">
-                <button id="load-more-btn" class="compose-btn" style="width: auto; padding: 10px 30px; display: none;" onclick="loadMore()">Load More</button>
+            
+            <div id="message-detail-panel">
+                <!-- Message details will be loaded here -->
             </div>
         </div>
     </div>
@@ -562,6 +574,7 @@
                 document.getElementById('message-list').innerHTML = '';
                 document.getElementById('view-name').innerText = label === '' ? 'All Mail' : label.charAt(0) + label.slice(1).toLowerCase();
                 document.getElementById('search-input').value = '';
+                hideMessageDetail();
                 
                 // Update active state in sidebar
                 document.querySelectorAll('.mailbox-item').forEach(item => {
@@ -593,6 +606,7 @@
                 document.getElementById('message-list').innerHTML = '';
                 document.getElementById('view-name').innerText = `${email} - ${label === '' ? 'All Mail' : label}`;
                 document.getElementById('search-input').value = '';
+                hideMessageDetail();
             }
             
             let url = `/accounts/${accId}/messages?`;
@@ -627,6 +641,7 @@
                 nextPageToken = null;
                 document.getElementById('message-list').innerHTML = '<div style="padding: 20px; text-align: center;">Searching...</div>';
                 document.getElementById('view-name').innerText = `Search: ${query}`;
+                hideMessageDetail();
                 
                 // Remove active state from sidebar
                 document.querySelectorAll('.mailbox-item').forEach(item => item.classList.remove('active'));
@@ -665,8 +680,6 @@
             const list = document.getElementById('message-list');
             if (!append) {
                 list.innerHTML = '';
-                document.getElementById('message-detail').style.display = 'none';
-                list.style.display = 'block';
             }
             if (!messages || messages.length === 0) {
                 if (!append) list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-gray);">No messages found.</div>';
@@ -676,6 +689,7 @@
             messages.forEach(msg => {
                 const item = document.createElement('div');
                 item.className = 'message-item';
+                item.id = `msg-${msg.id}`;
                 item.innerHTML = `
                     <div class="message-sender">${msg.from || msg.accountEmail || ''}</div>
                     <div class="message-snippet"><b>${msg.subject || '(no subject)'}</b> - ${msg.snippet}</div>
@@ -688,43 +702,62 @@
 
         async function showMessage(id, accId) {
             if (!accId) {
-                // Fallback to first account if accId is missing (should not happen with updated backend)
                 accId = accounts[0].id;
             }
-            document.getElementById('message-list').style.display = 'none';
-            document.getElementById('load-more-btn').style.display = 'none';
-            const detail = document.getElementById('message-detail');
-            detail.style.display = 'block';
-            detail.innerHTML = '<div style="padding: 20px; text-align: center;">Loading message...</div>';
+            
+            // Highlight selected
+            document.querySelectorAll('.message-item').forEach(item => item.classList.remove('selected'));
+            const selectedItem = document.getElementById(`msg-${id}`);
+            if (selectedItem) selectedItem.classList.add('selected');
+
+            const panel = document.getElementById('message-detail-panel');
+            panel.classList.add('open');
+            panel.innerHTML = '<div style="padding: 20px; text-align: center;">Loading message...</div>';
 
             try {
                 const res = await fetch(`/accounts/${accId}/messages/${id}`);
                 const msg = await res.json();
                 
-                detail.innerHTML = `
+                panel.innerHTML = `
                     <div class="detail-header">
-                        <div style="display: flex; align-items: center; margin-bottom: 20px;">
-                            <span class="back-btn" onclick="hideMessageDetail()"><i class="fa-solid fa-arrow-left"></i></span>
-                            <div class="detail-subject">${msg.subject || '(no subject)'}</div>
+                        <div class="panel-actions">
+                            <span class="back-btn" onclick="hideMessageDetail()"><i class="fa-solid fa-xmark"></i></span>
                         </div>
+                        <div class="detail-subject">${msg.subject || '(no subject)'}</div>
                         <div class="detail-meta">
                             <div><strong>${msg.from || ''}</strong></div>
                             <div>${new Date(msg.internalDate).toLocaleString()}</div>
                         </div>
                     </div>
-                    <div class="detail-body">${msg.body || msg.snippet || ''}</div>
+                    <div class="detail-body-container">
+                        ${msg.html_body ? 
+                            '<iframe id="detail-html-frame"></iframe>' : 
+                            `<div class="detail-body">${msg.body || msg.snippet || ''}</div>`
+                        }
+                    </div>
                 `;
+
+                if (msg.html_body) {
+                    const iframe = document.getElementById('detail-html-frame');
+                    const doc = iframe.contentDocument || iframe.contentWindow.document;
+                    doc.open();
+                    doc.write(msg.html_body);
+                    doc.close();
+                    
+                    // Adjust iframe height to content
+                    iframe.onload = function() {
+                        iframe.style.height = doc.body.scrollHeight + 'px';
+                    };
+                }
             } catch (err) {
-                detail.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--accent-red);">Failed to load message.</div>';
+                panel.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--accent-red);">Failed to load message.</div>';
             }
         }
 
         function hideMessageDetail() {
-            document.getElementById('message-detail').style.display = 'none';
-            document.getElementById('message-list').style.display = 'block';
-            if (nextPageToken) {
-                document.getElementById('load-more-btn').style.display = 'inline-block';
-            }
+            const panel = document.getElementById('message-detail-panel');
+            panel.classList.remove('open');
+            document.querySelectorAll('.message-item').forEach(item => item.classList.remove('selected'));
         }
 
         function showComposer() {

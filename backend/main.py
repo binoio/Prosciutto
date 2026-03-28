@@ -373,35 +373,48 @@ async def get_message(account_id: int, message_id: str, session: Session = Depen
         date = get_header(headers, "Date")
         snippet = msg.get("snippet", "")
         
-        # Simple body extraction (text/plain preferred)
-        body = ""
-        payload = msg.get("payload", {})
-        parts = payload.get("parts", [])
-
-        def get_body_from_parts(parts):
-
+        # Comprehensive body extraction (text/plain and text/html)
+        text_body = ""
+        html_body = ""
+        
+        def extract_parts(parts):
+            nonlocal text_body, html_body
             for part in parts:
-                if part.get("mimeType") == "text/plain":
-                    data = part.get("body", {}).get("data", "")
-                    return base64.urlsafe_b64decode(data).decode()
-                elif part.get("parts"):
-                    res = get_body_from_parts(part.get("parts"))
-                    if res: return res
-            return None
+                mime_type = part.get("mimeType")
+                body_data = part.get("body", {}).get("data", "")
+                
+                if mime_type == "text/plain" and not text_body:
+                    text_body = base64.urlsafe_b64decode(body_data).decode()
+                elif mime_type == "text/html" and not html_body:
+                    html_body = base64.urlsafe_b64decode(body_data).decode()
+                elif mime_type.startswith("multipart/"):
+                    extract_parts(part.get("parts", []))
 
-        if not parts:
-            data = payload.get("body", {}).get("data", "")
-            if data:
-                body = base64.urlsafe_b64decode(data).decode()
+        payload = msg.get("payload", {})
+        if "parts" in payload:
+            extract_parts(payload["parts"])
         else:
-            body = get_body_from_parts(parts) or snippet
+            # Single part message
+            mime_type = payload.get("mimeType")
+            body_data = payload.get("body", {}).get("data", "")
+            if body_data:
+                content = base64.urlsafe_b64decode(body_data).decode()
+                if mime_type == "text/plain":
+                    text_body = content
+                elif mime_type == "text/html":
+                    html_body = content
+
+        # Final fallback to snippet if nothing found
+        if not text_body and not html_body:
+            text_body = snippet
             
         return {
             "id": message_id,
             "subject": subject,
             "from": from_email,
             "date": date,
-            "body": body,
+            "body": text_body,
+            "html_body": html_body,
             "snippet": snippet,
             "internalDate": int(msg.get("internalDate", 0))
         }

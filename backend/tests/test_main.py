@@ -205,24 +205,56 @@ def test_get_message(mock_creds_class, mock_build, client: TestClient, session: 
     mock_build.return_value = mock_service
     
     import base64
-    body_data = base64.urlsafe_b64encode("Hello world body".encode()).decode()
+    text_data = base64.urlsafe_b64encode("Plain text body".encode()).decode()
+    html_data = base64.urlsafe_b64encode("<html><body>HTML body</body></html>".encode()).decode()
     
+    # Test 1: Single part message
     mock_service.users().messages().get().execute.return_value = {
         "id": "msg123",
         "snippet": "Hello world snippet",
         "internalDate": "123456789",
         "payload": {
+            "mimeType": "text/plain",
             "headers": [
                 {"name": "Subject", "value": "Test Subject"},
                 {"name": "From", "value": "sender@example.com"}
             ],
-            "body": {"data": body_data}
+            "body": {"data": text_data}
         }
     }
     
     response = client.get(f"/accounts/{account.id}/messages/msg123")
     assert response.status_code == 200
     data = response.json()
-    assert data["subject"] == "Test Subject"
-    assert data["from"] == "sender@example.com"
-    assert data["body"] == "Hello world body"
+    assert data["body"] == "Plain text body"
+    assert data["html_body"] == ""
+
+    # Test 2: Multipart message (HTML + Text)
+    mock_service.users().messages().get().execute.return_value = {
+        "id": "msg456",
+        "snippet": "Multipart snippet",
+        "internalDate": "123456789",
+        "payload": {
+            "mimeType": "multipart/alternative",
+            "headers": [
+                {"name": "Subject", "value": "Multipart Subject"},
+                {"name": "From", "value": "sender@example.com"}
+            ],
+            "parts": [
+                {
+                    "mimeType": "text/plain",
+                    "body": {"data": text_data}
+                },
+                {
+                    "mimeType": "text/html",
+                    "body": {"data": html_data}
+                }
+            ]
+        }
+    }
+    
+    response = client.get(f"/accounts/{account.id}/messages/msg456")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["body"] == "Plain text body"
+    assert data["html_body"] == "<html><body>HTML body</body></html>"
