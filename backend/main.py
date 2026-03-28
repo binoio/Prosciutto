@@ -136,6 +136,61 @@ async def list_accounts(session: Session = Depends(get_session)):
     accounts = session.exec(select(Account)).all()
     return [{"id": a.id, "email": a.email, "is_active": a.is_active} for a in accounts]
 
+def get_gmail_service(account_id: int, session: Session):
+    account = session.get(Account, account_id)
+    if not account:
+        return None
+    
+    creds_dict = json.loads(account.credentials_json)
+    creds = Credentials.from_authorized_user_info(creds_dict, SCOPES)
+    
+    # Check if creds need refresh
+    if creds and creds.expired and creds.refresh_token:
+        from google.auth.transport.requests import Request as GoogleRequest
+        creds.refresh(GoogleRequest())
+        # Update DB with new credentials
+        account.credentials_json = creds.to_json()
+        session.add(account)
+        session.commit()
+    
+    return build("gmail", "v1", credentials=creds)
+
+@app.get("/accounts/{account_id}/messages")
+async def list_messages(account_id: int, session: Session = Depends(get_session)):
+    service = get_gmail_service(account_id, session)
+    if not service:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    try:
+        results = service.users().messages().list(userId="me", maxResults=20).execute()
+        messages = results.get("messages", [])
+        
+        # Optionally fetch snippet for each message
+        detailed_messages = []
+        for msg in messages:
+            m = service.users().messages().get(userId="me", id=msg["id"], format="minimal").execute()
+            detailed_messages.append({
+                "id": m["id"],
+                "snippet": m["snippet"],
+                "threadId": m["threadId"]
+            })
+        
+        return detailed_messages
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/accounts/{account_id}/messages/{message_id}")
+async def get_message(account_id: int, message_id: str, session: Session = Depends(get_session)):
+    service = get_gmail_service(account_id, session)
+    if not service:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    try:
+        message = service.users().messages().get(userId="me", id=message_id).execute()
+        return message
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
