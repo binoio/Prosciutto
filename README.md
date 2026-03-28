@@ -89,6 +89,11 @@ Open [http://localhost:8000](http://localhost:8000) in your browser.
 3. Click **Save Settings**.
 4. Click **+ Add Account** to authenticate your Gmail accounts.
 
+**Note on Permanent Deletion**: By default, the app requests the `gmail.modify` scope, which allows moving messages to the Trash but does *not* allow permanent deletion (using the "Permanently Delete" action in the Trash/Spam folders). To enable permanent deletion, you must:
+1. Create a `.env` file in the project root.
+2. Add `ENABLE_DELETION_SCOPE=true` to the `.env` file.
+3. Restart the server and re-authenticate your accounts to grant the new `https://mail.google.com/` scope.
+
 ## Deployment
 
 To deploy to Google Cloud Run, use the interactive script:

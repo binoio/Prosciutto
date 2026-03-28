@@ -36,14 +36,23 @@ limiter = Limiter(key_func=get_remote_address)
 cache = Cache(".cache_dir")
 
 # Define Scopes
-SCOPES = [
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.compose",
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/gmail.modify",
-    "https://www.googleapis.com/auth/userinfo.email",
-    "openid"
-]
+def get_requested_scopes():
+    scopes = [
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.compose",
+        "https://www.googleapis.com/auth/gmail.send",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "openid"
+    ]
+    # Default-deny the app's use of or requests for the messages.delete or messages.batchDelete scope
+    # unless .env exists and contains a ENABLE_DELETION_SCOPE=true.
+    if os.path.exists(".env") and os.getenv("ENABLE_DELETION_SCOPE") == "true":
+        scopes.append("https://mail.google.com/")
+    else:
+        scopes.append("https://www.googleapis.com/auth/gmail.modify")
+    return scopes
+
+SCOPES = get_requested_scopes()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
