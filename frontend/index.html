@@ -2,6 +2,7 @@
 <html>
 <head>
     <title>Gmail API Web App</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         :root {
             --bg-white: #ffffff;
@@ -140,43 +141,83 @@
         <div id="mailbox-list">
             <div class="mailbox-item active" onclick="loadMailbox('INBOX')">
                 <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'INBOX')">▶</span>
-                Inbox
+                <i class="fa-solid fa-inbox" style="margin-right: 8px;"></i> Inbox
             </div>
             <div id="accounts-INBOX" class="account-subset"></div>
             
             <div class="mailbox-item" onclick="loadMailbox('SENT')">
                 <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'SENT')">▶</span>
-                Sent
+                <i class="fa-solid fa-paper-plane" style="margin-right: 8px;"></i> Sent
             </div>
             <div id="accounts-SENT" class="account-subset"></div>
 
             <div class="mailbox-item" onclick="loadMailbox('STARRED')">
                 <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'STARRED')">▶</span>
-                Starred
+                <i class="fa-solid fa-star" style="margin-right: 8px;"></i> Starred
             </div>
             <div id="accounts-STARRED" class="account-subset"></div>
 
             <div class="mailbox-item" onclick="loadMailbox('DRAFT')">
                 <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'DRAFT')">▶</span>
-                Drafts
+                <i class="fa-solid fa-file-lines" style="margin-right: 8px;"></i> Drafts
             </div>
             <div id="accounts-DRAFT" class="account-subset"></div>
 
             <div class="mailbox-item" onclick="loadMailbox('TRASH')">
                 <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'TRASH')">▶</span>
-                Trash
+                <i class="fa-solid fa-trash" style="margin-right: 8px;"></i> Trash
             </div>
             <div id="accounts-TRASH" class="account-subset"></div>
+
+            <div class="mailbox-item" onclick="loadMailbox('')">
+                <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'ALL')">▶</span>
+                <i class="fa-solid fa-envelope-open-text" style="margin-right: 8px;"></i> All Mail
+            </div>
+            <div id="accounts-ALL" class="account-subset"></div>
         </div>
     </div>
     <div id="main">
         <div id="header">
             <h2 id="view-name">Inbox</h2>
-            <div id="settings-trigger" onclick="toggleSettings()">⚙</div>
+            <div id="search-container" style="flex: 1; margin: 0 20px; max-width: 720px; position: relative; display: flex; align-items: center;">
+                <div style="position: relative; flex: 1;">
+                    <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 15px; top: 12px; color: var(--text-gray);"></i>
+                    <input type="text" id="search-input" placeholder="Search mail" style="width: 100%; padding: 10px 10px 10px 45px; border: none; border-radius: 8px; background: var(--bg-light-gray); outline: none;" onkeydown="if(event.key === 'Enter') performSearch()">
+                </div>
+                <button id="search-filters-btn" onclick="toggleSearchFilters()" style="background: none; border: none; margin-left: -40px; cursor: pointer; color: var(--text-gray); z-index: 5;">
+                    <i class="fa-solid fa-sliders"></i>
+                </button>
+                <div id="search-filters-panel" style="position: absolute; top: 50px; left: 0; right: 0; background: #fff; border: 1px solid var(--border-gray); border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 20px; display: none; z-index: 100;">
+                    <div class="form-group" style="display: flex; align-items: center; margin-bottom: 10px;">
+                        <label style="width: 80px; font-size: 14px;">From</label>
+                        <input type="text" id="filter-from" style="flex: 1; border-bottom: 1px solid #eee;">
+                    </div>
+                    <div class="form-group" style="display: flex; align-items: center; margin-bottom: 10px;">
+                        <label style="width: 80px; font-size: 14px;">To</label>
+                        <input type="text" id="filter-to" style="flex: 1; border-bottom: 1px solid #eee;">
+                    </div>
+                    <div class="form-group" style="display: flex; align-items: center; margin-bottom: 10px;">
+                        <label style="width: 80px; font-size: 14px;">Subject</label>
+                        <input type="text" id="filter-subject" style="flex: 1; border-bottom: 1px solid #eee;">
+                    </div>
+                    <div class="form-group" style="display: flex; align-items: center; margin-bottom: 10px;">
+                        <label style="width: 80px; font-size: 14px;">Has words</label>
+                        <input type="text" id="filter-has" style="flex: 1; border-bottom: 1px solid #eee;">
+                    </div>
+                    <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                        <button class="compose-btn" style="width: auto; background: var(--bg-light-gray); box-shadow: none;" onclick="resetSearchFilters()">Reset</button>
+                        <button class="compose-btn" style="width: auto;" onclick="applySearchFilters()">Search</button>
+                    </div>
+                </div>
+            </div>
+            <div id="settings-trigger" onclick="toggleSettings()"><i class="fa-solid fa-gear"></i></div>
         </div>
         <div id="content">
             <div id="message-list">
                 <!-- Messages will be loaded here -->
+            </div>
+            <div style="text-align: center; padding: 20px;">
+                <button id="load-more-btn" class="compose-btn" style="width: auto; padding: 10px 30px; display: none;" onclick="loadMore()">Load More</button>
             </div>
         </div>
     </div>
@@ -229,6 +270,7 @@
         let currentLabel = 'INBOX';
         let currentAccountId = null; // null means unified
         let accounts = [];
+        let nextPageToken = null;
 
         async function init() {
             await loadAccounts();
@@ -253,8 +295,9 @@
             });
             
             // Populate account subsets in sidebar
-            ['INBOX', 'SENT', 'STARRED', 'DRAFT', 'TRASH'].forEach(label => {
+            ['INBOX', 'SENT', 'STARRED', 'DRAFT', 'TRASH', 'ALL'].forEach(label => {
                 const subset = document.getElementById(`accounts-${label}`);
+                if (!subset) return;
                 subset.innerHTML = '';
                 accounts.forEach(acc => {
                     const item = document.createElement('div');
@@ -262,7 +305,7 @@
                     item.innerText = acc.email;
                     item.onclick = (e) => {
                         e.stopPropagation();
-                        loadAccountMailbox(acc.id, acc.email, label);
+                        loadAccountMailbox(acc.id, acc.email, label === 'ALL' ? '' : label);
                     };
                     subset.appendChild(item);
                 });
@@ -273,8 +316,10 @@
             event.stopPropagation();
             const triangle = event.target;
             const subset = document.getElementById(`accounts-${label}`);
-            triangle.classList.toggle('expanded');
-            subset.classList.toggle('visible');
+            if (subset) {
+                triangle.classList.toggle('expanded');
+                subset.classList.toggle('visible');
+            }
         }
 
         async function toggleSettings() {
@@ -290,43 +335,158 @@
             }
         }
 
-        async function loadMailbox(label) {
-            currentLabel = label;
-            currentAccountId = null;
-            document.getElementById('view-name').innerText = label.charAt(0) + label.slice(1).toLowerCase();
+        async function loadMailbox(label, append = false) {
+            if (!append) {
+                currentLabel = label;
+                currentAccountId = null;
+                nextPageToken = null;
+                document.getElementById('message-list').innerHTML = '';
+                document.getElementById('view-name').innerText = label === '' ? 'All Mail' : label.charAt(0) + label.slice(1).toLowerCase();
+                document.getElementById('search-input').value = '';
+                
+                // Update active state in sidebar
+                document.querySelectorAll('.mailbox-item').forEach(item => {
+                    item.classList.remove('active');
+                    const targetLabel = label === '' ? 'All Mail' : label;
+                    if (item.innerText.toUpperCase().includes(targetLabel.toUpperCase())) {
+                        item.classList.add('active');
+                    }
+                });
+            }
+
+            let url = `/unified/messages?`;
+            if (label) url += `label=${label}&`;
+            if (append && nextPageToken) url += `page_token=${nextPageToken}&`;
             
-            // Update active state in sidebar
-            document.querySelectorAll('.mailbox-item').forEach(item => {
-                item.classList.remove('active');
-                if (item.innerText.includes(label.charAt(0) + label.slice(1).toLowerCase()) || item.innerText.includes(label)) {
-                    item.classList.add('active');
+            const res = await fetch(url);
+            const data = await res.json();
+            nextPageToken = data.nextPageToken || null;
+            
+            document.getElementById('load-more-btn').style.display = nextPageToken ? 'inline-block' : 'none';
+            renderMessages(data.messages, append);
+        }
+
+        async function loadAccountMailbox(accId, email, label, append = false) {
+            if (!append) {
+                currentLabel = label;
+                currentAccountId = accId;
+                nextPageToken = null;
+                document.getElementById('message-list').innerHTML = '';
+                document.getElementById('view-name').innerText = `${email} - ${label === '' ? 'All Mail' : label}`;
+                document.getElementById('search-input').value = '';
+            }
+            
+            let url = `/accounts/${accId}/messages?`;
+            if (label) url += `label=${label}&`;
+            if (append && nextPageToken) url += `page_token=${nextPageToken}&`;
+            
+            const res = await fetch(url);
+            const data = await res.json();
+            nextPageToken = data.nextPageToken || null;
+
+            document.getElementById('load-more-btn').style.display = nextPageToken ? 'inline-block' : 'none';
+            renderMessages(data.messages, append);
+        }
+
+        function loadMore() {
+            if (currentLabel === 'SEARCH') {
+                performSearch(true);
+            } else if (currentAccountId === null) {
+                loadMailbox(currentLabel, true);
+            } else {
+                const email = accounts.find(a => a.id === currentAccountId)?.email || '';
+                loadAccountMailbox(currentAccountId, email, currentLabel, true);
+            }
+        }
+
+        function toggleSearchFilters() {
+            const panel = document.getElementById('search-filters-panel');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function resetSearchFilters() {
+            document.getElementById('filter-from').value = '';
+            document.getElementById('filter-to').value = '';
+            document.getElementById('filter-subject').value = '';
+            document.getElementById('filter-has').value = '';
+        }
+
+        function applySearchFilters() {
+            const from = document.getElementById('filter-from').value;
+            const to = document.getElementById('filter-to').value;
+            const subject = document.getElementById('filter-subject').value;
+            const has = document.getElementById('filter-has').value;
+            
+            let query = '';
+            if (from) query += `from:(${from}) `;
+            if (to) query += `to:(${to}) `;
+            if (subject) query += `subject:(${subject}) `;
+            if (has) query += has;
+            
+            document.getElementById('search-input').value = query.trim();
+            document.getElementById('search-filters-panel').style.display = 'none';
+            performSearch();
+        }
+
+        async function performSearch(append = false) {
+            const query = document.getElementById('search-input').value;
+            if (!query && !append) return;
+
+            if (!append) {
+                currentLabel = 'SEARCH';
+                nextPageToken = null;
+                document.getElementById('message-list').innerHTML = '<div style="padding: 20px; text-align: center;">Searching...</div>';
+                document.getElementById('view-name').innerText = `Search: ${query}`;
+                
+                // Remove active state from sidebar
+                document.querySelectorAll('.mailbox-item').forEach(item => item.classList.remove('active'));
+            }
+
+            // For search, we use the currently active account OR the first account
+            let accId = currentAccountId || (accounts.length > 0 ? accounts[0].id : null);
+            if (!accId) {
+                alert("Please add an account first");
+                return;
+            }
+
+            try {
+                let url = `/accounts/${accId}/search?q=${encodeURIComponent(query)}&max_results=20`;
+                if (append && nextPageToken) url += `&page_token=${nextPageToken}`;
+                
+                const res = await fetch(url);
+                if (!res.ok) {
+                    const error = await res.json();
+                    alert("Search error: " + (error.detail || res.statusText));
+                    document.getElementById('message-list').innerHTML = '';
+                    return;
                 }
-            });
-
-            const res = await fetch(`/unified/messages?label=${label}`);
-            const messages = await res.json();
-            renderMessages(messages);
+                const data = await res.json();
+                nextPageToken = data.nextPageToken || null;
+                
+                document.getElementById('load-more-btn').style.display = nextPageToken ? 'inline-block' : 'none';
+                renderMessages(data.messages, append);
+            } catch (err) {
+                console.error(err);
+                alert("An error occurred during search");
+            }
         }
 
-        async function loadAccountMailbox(accId, email, label) {
-            currentLabel = label;
-            currentAccountId = accId;
-            document.getElementById('view-name').innerText = `${email} - ${label}`;
-            
-            const res = await fetch(`/accounts/${accId}/messages?label=${label}`);
-            const messages = await res.json();
-            renderMessages(messages);
-        }
-
-        function renderMessages(messages) {
+        function renderMessages(messages, append = false) {
             const list = document.getElementById('message-list');
-            list.innerHTML = '';
+            if (!append) {
+                list.innerHTML = '';
+            }
+            if (!messages || messages.length === 0) {
+                if (!append) list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-gray);">No messages found.</div>';
+                return;
+            }
+            
             messages.forEach(msg => {
                 const item = document.createElement('div');
                 item.className = 'message-item';
                 item.innerHTML = `
-                    <div class="message-sender">${msg.accountEmail || ''}</div>
-                    <div class="message-snippet">${msg.snippet}</div>
+                    <div class="message-sender">${msg.from || msg.accountEmail || ''}</div>
+                    <div class="message-snippet"><b>${msg.subject || '(no subject)'}</b> - ${msg.snippet}</div>
                     <div class="message-date">${new Date(msg.internalDate).toLocaleDateString()}</div>
                 `;
                 item.onclick = () => showMessage(msg.id, msg.accountId || currentAccountId);
