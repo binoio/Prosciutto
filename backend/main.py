@@ -1,6 +1,7 @@
 import base64
 import logging
 from fastapi import FastAPI, Depends, Request, HTTPException
+from typing import Optional
 from fastapi.responses import RedirectResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -396,8 +397,13 @@ async def get_message(account_id: int, message_id: str, session: Session = Depen
         headers = msg.get("payload", {}).get("headers", [])
         subject = get_header(headers, "Subject")
         from_email = get_header(headers, "From")
+        to_email = get_header(headers, "To")
+        cc_email = get_header(headers, "Cc")
         date = get_header(headers, "Date")
+        message_id_header = get_header(headers, "Message-ID")
+        references_header = get_header(headers, "References")
         snippet = msg.get("snippet", "")
+        thread_id = msg.get("threadId", "")
         
         # Comprehensive body extraction (text/plain and text/html)
         text_body = ""
@@ -436,8 +442,13 @@ async def get_message(account_id: int, message_id: str, session: Session = Depen
             
         return {
             "id": message_id,
+            "threadId": thread_id,
+            "messageId": message_id_header,
+            "references": references_header,
             "subject": subject,
             "from": from_email,
+            "to": to_email,
+            "cc": cc_email,
             "date": date,
             "body": text_body,
             "html_body": html_body,
@@ -454,6 +465,10 @@ class SendEmailRequest(BaseModel):
     to: str
     subject: str
     body: str
+    threadId: Optional[str] = None
+    inReplyTo: Optional[str] = None
+    references: Optional[str] = None
+
 class BatchModifyRequest(BaseModel):
     ids: list[str]
     addLabelIds: list[str] = []
@@ -518,12 +533,20 @@ async def send_email(account_id: int, request: SendEmailRequest, session: Sessio
         message = MIMEText(request.body)
         message["to"] = request.to
         message["subject"] = request.subject
+        if request.inReplyTo:
+            message["In-Reply-To"] = request.inReplyTo
+        if request.references:
+            message["References"] = request.references
         
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
         
+        body = {"raw": raw_message}
+        if request.threadId:
+            body["threadId"] = request.threadId
+            
         send_result = service.users().messages().send(
             userId="me",
-            body={"raw": raw_message}
+            body=body
         ).execute()
         
         return {"message": "Email sent", "result": send_result}
