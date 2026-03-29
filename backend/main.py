@@ -112,6 +112,7 @@ async def get_settings(session: Session = Depends(get_session)):
         "SHOW_STARRED": settings_dict.get("SHOW_STARRED", "false"),
         "COMPOSE_NEW_WINDOW": settings_dict.get("COMPOSE_NEW_WINDOW", "true"),
         "WARN_BEFORE_DELETE": settings_dict.get("WARN_BEFORE_DELETE", "true"),
+        "MARK_READ_AUTOMATICALLY": settings_dict.get("MARK_READ_AUTOMATICALLY", "true"),
         "CAN_PERMANENTLY_DELETE": "https://mail.google.com/" in SCOPES
     }
 
@@ -282,6 +283,7 @@ def get_detailed_messages_batch(service, messages_meta, format="metadata", metad
             "id": response["id"],
             "snippet": response.get("snippet", ""),
             "threadId": response.get("threadId", ""),
+            "labelIds": response.get("labelIds", []),
             "internalDate": int(response.get("internalDate", 0)),
             "subject": get_header(headers, "Subject"),
             "from": get_header(headers, "From"),
@@ -440,19 +442,6 @@ async def get_message(account_id: int, message_id: str, session: Session = Depen
     try:
         msg = service.users().messages().get(userId="me", id=message_id).execute()
         
-        # If the message is unread, mark it as read
-        if "UNREAD" in msg.get("labelIds", []):
-            try:
-                service.users().messages().modify(
-                    userId="me", 
-                    id=message_id, 
-                    body={"removeLabelIds": ["UNREAD"]}
-                ).execute()
-                # Clear cache so the unread state is updated in the list
-                cache.clear()
-            except Exception as e:
-                logger.warning(f"Failed to mark message {message_id} as read: {str(e)}")
-
         headers = msg.get("payload", {}).get("headers", [])
         subject = get_header(headers, "Subject")
         from_email = get_header(headers, "From")
@@ -463,6 +452,7 @@ async def get_message(account_id: int, message_id: str, session: Session = Depen
         references_header = get_header(headers, "References")
         snippet = msg.get("snippet", "")
         thread_id = msg.get("threadId", "")
+        label_ids = msg.get("labelIds", [])
         
         # Comprehensive body extraction (text/plain and text/html)
         text_body = ""
@@ -512,6 +502,7 @@ async def get_message(account_id: int, message_id: str, session: Session = Depen
             "body": text_body,
             "html_body": html_body,
             "snippet": snippet,
+            "labelIds": label_ids,
             "internalDate": int(msg.get("internalDate", 0))
         }
     except Exception as e:

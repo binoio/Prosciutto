@@ -181,8 +181,20 @@ body {
     border-bottom: 1px solid var(--border-gray); 
     cursor: pointer; 
     display: flex;
-    align-items: baseline;
+    align-items: center;
     background: var(--bg-white);
+    position: relative;
+}
+.unread-dot {
+    width: 8px;
+    height: 8px;
+    background-color: #1a73e8;
+    border-radius: 50%;
+    margin-right: 10px;
+    flex-shrink: 0;
+}
+.unread-dot.invisible {
+    visibility: hidden;
 }
 .message-item:hover { 
     background: var(--bg-hover); 

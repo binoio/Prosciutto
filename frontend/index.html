@@ -163,6 +163,10 @@
                             <input type="checkbox" id="setting-compose-html" style="width: auto;" onchange="saveAllSettings()">
                             <label for="setting-compose-html">Compose new messages as HTML</label>
                         </div>
+                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+                            <input type="checkbox" id="setting-mark-read" style="width: auto;" onchange="saveAllSettings()">
+                            <label for="setting-mark-read">Mark messages as read automatically after 3 seconds</label>
+                        </div>
                     </div>
 
                     <!-- Accounts Tab -->
@@ -290,6 +294,7 @@
             document.getElementById('client-secret').value = globalSettings.GOOGLE_CLIENT_SECRET || '';
             document.getElementById('setting-compose-window').checked = globalSettings.COMPOSE_NEW_WINDOW !== 'false';
             document.getElementById('setting-compose-html').checked = globalSettings.COMPOSE_AS_HTML !== 'false';
+            document.getElementById('setting-mark-read').checked = globalSettings.MARK_READ_AUTOMATICALLY !== 'false';
             
             const warnDeleteCheckbox = document.getElementById('setting-warn-delete');
             warnDeleteCheckbox.checked = globalSettings.WARN_BEFORE_DELETE !== 'false';
@@ -342,6 +347,7 @@
             const remoteImages = document.getElementById('setting-remote-images').checked;
             const composeWindow = document.getElementById('setting-compose-window').checked;
             const composeHtml = document.getElementById('setting-compose-html').checked;
+            const markReadAuto = document.getElementById('setting-mark-read').checked;
             const warnDelete = document.getElementById('setting-warn-delete').checked;
             const clientId = document.getElementById('client-id').value;
             const clientSecret = document.getElementById('client-secret').value;
@@ -353,6 +359,7 @@
                 LOAD_REMOTE_IMAGES: remoteImages ? 'true' : 'false',
                 COMPOSE_NEW_WINDOW: composeWindow ? 'true' : 'false',
                 COMPOSE_AS_HTML: composeHtml ? 'true' : 'false',
+                MARK_READ_AUTOMATICALLY: markReadAuto ? 'true' : 'false',
                 WARN_BEFORE_DELETE: warnDelete ? 'true' : 'false'
             };
             // Only include credentials if they are not disabled (not from env)
@@ -378,6 +385,7 @@
             globalSettings.LOAD_REMOTE_IMAGES = data.LOAD_REMOTE_IMAGES;
             globalSettings.COMPOSE_NEW_WINDOW = data.COMPOSE_NEW_WINDOW;
             globalSettings.COMPOSE_AS_HTML = data.COMPOSE_AS_HTML;
+            globalSettings.MARK_READ_AUTOMATICALLY = data.MARK_READ_AUTOMATICALLY;
 
             updateDisclosureTriangles();
             updateStarredMailboxVisibility();
@@ -824,7 +832,9 @@
                 item.className = 'message-item';
                 item.id = `msg-${msg.id}`;
                 const accountId = msg.accountId || msg.account_id || currentAccountId;
+                const isUnread = msg.labelIds && msg.labelIds.includes('UNREAD');
                 item.innerHTML = `
+                    <div class="unread-dot ${isUnread ? '' : 'invisible'}"></div>
                     <input type="checkbox" class="message-checkbox" onclick="event.stopPropagation(); updateSelectionCount()" data-id="${msg.id}" data-accid="${accountId}">
                     <div class="message-sender">${msg.from || msg.accountEmail || ''}</div>
                     <div class="message-snippet"><b>${msg.subject || '(no subject)'}</b> - ${msg.snippet}</div>
@@ -1073,6 +1083,42 @@
                 const res = await fetch(`/accounts/${accId}/messages/${id}`);
                 const msg = await res.json();
                 
+                const isUnread = msg.labelIds && msg.labelIds.includes('UNREAD');
+                
+                // Auto-mark as read after 3 seconds if setting enabled
+                if (isUnread && globalSettings.MARK_READ_AUTOMATICALLY !== 'false') {
+                    setTimeout(async () => {
+                        // Check if the same message is still open (or at least panel is still open)
+                        const currentPanel = document.getElementById('message-detail-panel');
+                        if (currentPanel && currentPanel.classList.contains('open')) {
+                            // Check if it's the same message by looking at hidden input if it exists or just re-verifying
+                            // For simplicity, we just proceed if panel is open
+                            await fetch(`/accounts/${accId}/messages/batch-modify`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    ids: [id],
+                                    removeLabelIds: ['UNREAD']
+                                })
+                            });
+                            // Update the list if visible
+                            const listDot = document.querySelector(`#msg-${id} .unread-dot`);
+                            if (listDot) listDot.classList.add('invisible');
+                            // Update the dot in the detail view
+                            const detailDot = document.getElementById('detail-unread-dot');
+                            if (detailDot) detailDot.classList.add('invisible');
+                            // Update the toggle icon
+                            const toggleIcon = document.getElementById('toggle-read-btn');
+                            if (toggleIcon) {
+                                toggleIcon.innerHTML = '<i class="fa-solid fa-envelope"></i>';
+                                toggleIcon.title = 'Mark as Unread';
+                                // We need to update the onclick too
+                                toggleIcon.setAttribute('onclick', `toggleReadStatus('${id}', ${accId}, false)`);
+                            }
+                        }
+                    }, 3000);
+                }
+
                 let hasRemoteImages = false;
                 let sanitizedHtml = msg.html_body;
                 
@@ -1105,12 +1151,18 @@
                             <button class="action-btn" onclick="renderComposerInPanel('${msg.id}', ${accId}, 'replyAll')" title="Reply All"><i class="fa-solid fa-reply-all"></i></button>
                             <button class="action-btn" onclick="renderComposerInPanel('${msg.id}', ${accId}, 'forward')" title="Forward"><i class="fa-solid fa-share"></i></button>
                             <div style="flex: 1;"></div>
+                            <button class="action-btn" id="toggle-read-btn" onclick="toggleReadStatus('${msg.id}', ${accId}, ${isUnread})" title="${isUnread ? 'Mark as Read' : 'Mark as Unread'}">
+                                <i class="fa-solid ${isUnread ? 'fa-envelope-open' : 'fa-envelope'}"></i>
+                            </button>
                             <button class="action-btn" onclick="archiveMessage('${msg.id}', ${accId})" title="Archive"><i class="fa-solid fa-box-archive"></i></button>
                             <button class="action-btn" id="label-picker-btn" onclick="showLabelPicker(event, '${msg.id}', ${accId})" title="Label"><i class="fa-solid fa-tag"></i></button>
                             <button class="action-btn" onclick="trashMessage('${msg.id}', ${accId})" title="${trashTitle}" ${trashDisabledAttr} ${trashStyleAttr}><i class="fa-solid ${trashIcon}"></i></button>
                             ${isSingleView ? '' : '<span class="back-btn" onclick="hideMessageDetail()" style="margin-left: 10px;"><i class="fa-solid fa-xmark"></i></span>'}
                         </div>
-                        <div class="detail-subject">${msg.subject || '(no subject)'}</div>
+                        <div class="detail-subject">
+                            <div id="detail-unread-dot" class="unread-dot ${isUnread ? '' : 'invisible'}" style="display: inline-block; margin-right: 10px; vertical-align: middle;"></div>
+                            <span style="vertical-align: middle;">${msg.subject || '(no subject)'}</span>
+                        </div>
                         <div class="detail-meta">
                             <div class="meta-row">
                                 <span class="meta-label">From:</span>
@@ -1398,6 +1450,46 @@
 
         function forwardMessage(id, accId) {
             renderComposerInPanel(id, accId, 'forward');
+        }
+
+        async function toggleReadStatus(id, accId, currentlyUnread) {
+            const addLabelIds = currentlyUnread ? [] : ['UNREAD'];
+            const removeLabelIds = currentlyUnread ? ['UNREAD'] : [];
+            
+            const res = await fetch(`/accounts/${accId}/messages/batch-modify`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ids: [id],
+                    addLabelIds: addLabelIds,
+                    removeLabelIds: removeLabelIds
+                })
+            });
+            
+            if (res.ok) {
+                const isNowUnread = !currentlyUnread;
+                // Update the list if visible
+                const listDot = document.querySelector(`#msg-${id} .unread-dot`);
+                if (listDot) {
+                    if (isNowUnread) listDot.classList.remove('invisible');
+                    else listDot.classList.add('invisible');
+                }
+                // Update the dot in the detail view
+                const detailDot = document.getElementById('detail-unread-dot');
+                if (detailDot) {
+                    if (isNowUnread) detailDot.classList.remove('invisible');
+                    else detailDot.classList.add('invisible');
+                }
+                // Update the toggle icon
+                const toggleIcon = document.getElementById('toggle-read-btn');
+                if (toggleIcon) {
+                    toggleIcon.innerHTML = `<i class="fa-solid ${isNowUnread ? 'fa-envelope-open' : 'fa-envelope'}"></i>`;
+                    toggleIcon.title = isNowUnread ? 'Mark as Read' : 'Mark as Unread';
+                    toggleIcon.setAttribute('onclick', `toggleReadStatus('${id}', ${accId}, ${isNowUnread})`);
+                }
+            } else {
+                alert("Failed to update status");
+            }
         }
 
         async function archiveMessage(id, accId) {
