@@ -59,7 +59,10 @@
     </div>
     <div id="main">
         <div id="header">
-            <h2 id="view-name">Inbox</h2>
+            <div id="view-ctl">
+	    <h2 id="view-name">Inbox</h2>
+            <div id="refresh-btn" onclick="refreshMailbox()" title="Refresh" style="margin-left: 10px; cursor: pointer; color: var(--text-gray); font-size: 16px; display: inline-flex; align-items: center;"><i class="fa-solid fa-rotate-right"></i></div>
+	    </div>
             <div id="search-container" style="flex: 1; margin: 0 20px; max-width: 720px; position: relative; display: flex; align-items: center;">
                 <div style="position: relative; flex: 1;">
                     <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 15px; top: 12px; color: var(--text-gray);"></i>
@@ -72,10 +75,7 @@
             <div id="message-list-container">
                 <div id="message-list-header">
                     <input type="checkbox" id="multi-select-checkbox" onclick="toggleAllMessages(this)">
-                    <div id="refresh-btn" onclick="refreshMailbox()" title="Refresh" style="margin-left: 15px; cursor: pointer; color: var(--text-gray); font-size: 16px; margin-right: 20px;">
-                        <i class="fa-solid fa-rotate-right"></i>
-                    </div>
-                    
+
                     <div class="column-header" style="width: var(--sender-width, 200px); flex-shrink: 0;" onclick="sortMessages('from')">
                         From <span id="sort-from" class="sort-icon"></span>
                         <div class="resizer" data-column="sender"></div>
@@ -1258,7 +1258,6 @@
                             <input type="text" id="panel-compose-subject" placeholder="Subject" value="${subject.replace(/"/g, '&quot;')}">
                         </div>
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-                            <label>Body</label>
                             <label style="font-size: 12px; cursor: pointer; color: var(--text-gray);">
                                 <input type="checkbox" id="panel-compose-is-html" onchange="toggleComposeFormat(this)" ${useHtml ? 'checked' : ''}> HTML Format
                             </label>
@@ -1478,7 +1477,6 @@
                             <input type="text" id="panel-compose-subject" placeholder="Subject" value="">
                         </div>
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-                            <label>Body</label>
                             <label style="font-size: 12px; cursor: pointer; color: var(--text-gray);">
                                 <input type="checkbox" id="panel-compose-is-html" onchange="toggleComposeFormat(this)" ${useHtml ? 'checked' : ''}> HTML Format
                             </label>

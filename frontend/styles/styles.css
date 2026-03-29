@@ -126,6 +126,10 @@ body {
 #message-detail-panel.open { width: 60%; }
 #message-detail-panel.single-view { width: 100%; border-left: none; }
 
+#view-ctl {
+    display: flex;
+}
+
 #message-list-header {
     padding: 10px 20px;
     border-bottom: 1px solid var(--border-gray);
@@ -139,12 +143,7 @@ body {
     box-sizing: border-box;
 }
 
-#multi-select-checkbox {
-    width: 18px;
-    height: 18px;
-}
-
-.message-checkbox {
+#multi-select-checkbox, .message-checkbox {
     margin-right: 15px;
     cursor: pointer;
     width: 18px;
@@ -257,7 +256,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; }
 .composer-header { background: #404040; color: #fff; padding: 10px 15px; border-top-left-radius: 8px; border-top-right-radius: 8px; display: flex; justify-content: space-between; }
 .composer-body { padding: 15px; flex: 1; display: flex; flex-direction: column; }
 .form-group { margin-bottom: 5px; border-bottom: 1px solid var(--border-gray); display: flex; align-items: baseline; gap: 10px; }
-.form-group label { width: 60px; flex-shrink: 0; font-size: 13px; color: var(--text-gray); }
+.form-group label { flex-shrink: 0; font-size: 13px; color: var(--text-gray); }
 .form-group input, .form-group select { border: none; width: 100%; padding: 8px 0; outline: none; background: transparent; color: var(--text-dark); }
 .form-group textarea { border: none; width: 100%; padding: 8px 0; outline: none; resize: none; flex: 1; min-height: 200px; background: transparent; color: var(--text-dark); }
 
