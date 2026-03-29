@@ -91,6 +91,24 @@ body {
 .account-subset-item { padding: 5px 10px; font-size: 12px; cursor: pointer; color: var(--text-gray); }
 .account-subset-item:hover { text-decoration: underline; }
 
+.label-icon-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 8px;
+}
+
+.label-expand-icon {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--bg-sidebar);
+    font-size: 10px !important;
+}
+
 #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 
 #header { 
@@ -113,6 +131,12 @@ body {
 #settings-trigger:hover { background: var(--bg-hover); }
 
 #content { flex: 1; display: flex; position: relative; overflow: hidden; }
+
+#labels-container {
+    display: flex;
+    flex-flow: column;
+    align-items: center;
+}
 
 #message-list-container { flex: 1; overflow-y: auto; border-right: 1px solid var(--border-gray); }
 #message-list { width: 100%; }
@@ -356,5 +380,26 @@ body.resizing, body.resizing * { cursor: col-resize !important; }
 
 #sidebar.collapsed .account-subset {
     display: none !important;
+}
+
+#sidebar.collapsed .fa-plus {
+    display: none !important;
+}
+
+.fa-solid.fa-arrow-right.label-expand-icon {
+    margin-top: 2px;
+}
+
+#sidebar.collapsed .label-icon-wrapper {
+    margin-right: 0;
+    cursor: pointer;
+}
+
+#sidebar.collapsed .label-icon-wrapper i.fa-folder {
+    margin-right: 0 !important;
+}
+
+#sidebar.collapsed .label-expand-icon {
+    display: block;
 }
 
