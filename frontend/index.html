@@ -71,6 +71,40 @@
                 <div style="position: relative; flex: 1;">
                     <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 15px; top: 12px; color: var(--text-gray);"></i>
                     <input type="text" id="search-input" placeholder="Search mail" onkeydown="if(event.key === 'Enter') performSearch()">
+                    <i class="fa-solid fa-sliders" id="advanced-search-toggle" onclick="toggleAdvancedSearch(event)" style="position: absolute; right: 15px; top: 12px; color: var(--text-gray); cursor: pointer;" title="Show search options"></i>
+                    
+                    <div id="advanced-search-dropdown" class="advanced-search-dropdown" onclick="event.stopPropagation()">
+                        <div class="advanced-search-form">
+                            <div class="form-row">
+                                <label>From</label>
+                                <input type="text" id="adv-from">
+                            </div>
+                            <div class="form-row">
+                                <label>Subject</label>
+                                <input type="text" id="adv-subject">
+                            </div>
+                            <div class="form-row">
+                                <label>Has words</label>
+                                <input type="text" id="adv-body">
+                            </div>
+                            <div class="form-row">
+                                <label>Date Range</label>
+                                <div style="display: flex; gap: 5px; align-items: center; flex: 1;">
+                                    <input type="date" id="adv-date-after" style="flex: 1;">
+                                    <span style="font-size: 12px; color: var(--text-gray);">to</span>
+                                    <input type="date" id="adv-date-before" style="flex: 1;">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <label>Has attachment</label>
+                                <input type="checkbox" id="adv-has-attachment">
+                            </div>
+                            <div class="form-actions">
+                                <button class="action-btn" onclick="clearAdvancedSearch()" style="border-radius: 4px; padding: 8px 15px;">Clear</button>
+                                <button class="compose-btn" style="width: auto; padding: 8px 25px; border-radius: 4px;" onclick="performAdvancedSearch()">Search</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div id="settings-trigger" onclick="openSettings()"><i class="fa-solid fa-gear"></i></div>
@@ -135,6 +169,7 @@
                     <div class="modal-tab" onclick="switchTab('accounts')" data-tab="accounts">Accounts</div>
                     <div class="modal-tab" onclick="switchTab('appearance')" data-tab="appearance">Appearance</div>
                     <div class="modal-tab" onclick="switchTab('privacy')" data-tab="privacy">Privacy</div>
+                    <div class="modal-tab" onclick="switchTab('contacts')" data-tab="contacts">Contacts</div>
                 </div>
                 <div class="modal-content">
                     <!-- General Tab -->
@@ -200,6 +235,10 @@
                             <input type="checkbox" id="setting-starred" style="width: auto;" onchange="saveAllSettings()">
                             <label for="setting-starred">Show Starred mailbox</label>
                         </div>
+                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+                            <input type="checkbox" id="setting-collapse-sidebar" style="width: auto;" onchange="saveAllSettings()">
+                            <label for="setting-collapse-sidebar">Always Collapse the Sidebar</label>
+                        </div>
                     </div>
 
                     <!-- Privacy Tab -->
@@ -212,6 +251,25 @@
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <input type="checkbox" id="setting-remote-images" style="width: auto;" onchange="saveAllSettings()">
                             <label for="setting-remote-images">Always display external images</label>
+                        </div>
+                    </div>
+
+                    <!-- Contacts Tab -->
+                    <div id="tab-contacts" class="tab-panel">
+                        <div style="background-color: #fff3cd; color: #856404; padding: 15px; border-radius: 4px; border: 1px solid #ffeeba; margin-bottom: 20px; font-size: 14px;">
+                            <i class="fa-solid fa-person-digging" style="margin-right: 10px;"></i>
+                            Under Construction: These settings will be functional in a future update.
+                        </div>
+                        
+                        <h4>Recent Activity</h4>
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                            <input type="checkbox" id="setting-autocomplete-recents" style="width: auto;" disabled>
+                            <label for="setting-autocomplete-recents" style="color: var(--text-gray);">Auto-complete from Recents</label>
+                        </div>
+
+                        <h4>Auto-complete from Account Contacts</h4>
+                        <div id="contacts-accounts-list" style="margin-top: 10px;">
+                            <!-- Account toggles will be rendered here -->
                         </div>
                     </div>
                 </div>
@@ -277,6 +335,9 @@
             }
 
             await loadSettings();
+            if (globalSettings.ALWAYS_COLLAPSE_SIDEBAR === 'true') {
+                document.getElementById('sidebar').classList.add('collapsed');
+            }
             await loadAccounts();
             if (accounts.length === 0) {
                 document.getElementById('first-run-prompt').style.display = 'flex';
@@ -333,6 +394,7 @@
             document.getElementById('setting-theme').value = globalSettings.THEME || 'automatic';
             document.getElementById('setting-disclosure').checked = globalSettings.SHOW_DISCLOSURE_IF_SINGLE === 'true';
             document.getElementById('setting-starred').checked = globalSettings.SHOW_STARRED === 'true';
+            document.getElementById('setting-collapse-sidebar').checked = globalSettings.ALWAYS_COLLAPSE_SIDEBAR === 'true';
 
             // Populate Privacy Settings            document.getElementById('setting-remote-images').checked = globalSettings.LOAD_REMOTE_IMAGES === 'true';
             
@@ -344,6 +406,7 @@
             const theme = document.getElementById('setting-theme').value;
             const disclosure = document.getElementById('setting-disclosure').checked;
             const starred = document.getElementById('setting-starred').checked;
+            const collapseSidebar = document.getElementById('setting-collapse-sidebar').checked;
             const remoteImages = document.getElementById('setting-remote-images').checked;
             const composeWindow = document.getElementById('setting-compose-window').checked;
             const composeHtml = document.getElementById('setting-compose-html').checked;
@@ -356,6 +419,7 @@
                 THEME: theme,
                 SHOW_DISCLOSURE_IF_SINGLE: disclosure ? 'true' : 'false',
                 SHOW_STARRED: starred ? 'true' : 'false',
+                ALWAYS_COLLAPSE_SIDEBAR: collapseSidebar ? 'true' : 'false',
                 LOAD_REMOTE_IMAGES: remoteImages ? 'true' : 'false',
                 COMPOSE_NEW_WINDOW: composeWindow ? 'true' : 'false',
                 COMPOSE_AS_HTML: composeHtml ? 'true' : 'false',
@@ -453,7 +517,7 @@
                         <i class="fa-solid fa-arrow-right label-expand-icon"></i>
                     </div>
                     <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${acc.email}</span>
-                    <i class="fa-solid fa-plus" style="margin-left: 8px; cursor: pointer; opacity: 0.6; padding: 2px 5px;" onclick="createNewLabel(event, ${acc.id}, '${acc.email}')" title="New Label"></i>
+                    <i class="fa-solid fa-plus" style="margin-left: auto; cursor: pointer; opacity: 0.6; padding: 2px 5px;" onclick="createNewLabel(event, ${acc.id}, '${acc.email}')" title="New Label"></i>
                 `;
                 container.appendChild(accItem);
 
@@ -556,12 +620,36 @@
             });
         }
 
+        function renderContactsAccounts() {
+            const list = document.getElementById('contacts-accounts-list');
+            if (!list) return;
+            list.innerHTML = '';
+            accounts.forEach(acc => {
+                const row = document.createElement('div');
+                row.style.display = 'flex';
+                row.style.justifyContent = 'space-between';
+                row.style.alignItems = 'center';
+                row.style.padding = '8px 0';
+                row.style.borderBottom = '1px solid var(--border-gray)';
+                row.innerHTML = `
+                    <span style="font-size: 14px;">${acc.email}</span>
+                    <input type="checkbox" style="width: auto;" disabled>
+                `;
+                list.appendChild(row);
+            });
+            if (accounts.length === 0) {
+                list.innerHTML = '<p style="color: var(--text-gray); font-size: 13px;">No accounts connected.</p>';
+            }
+        }
+
         async function removeAccount(id, email) {
             if (!confirm(`Are you sure you want to remove ${email}?`)) return;
-            
+
             const res = await fetch(`/accounts/${id}`, { method: 'DELETE' });
             if (res.ok) {
                 await loadAccounts();
+                renderAccountsInSettings();
+                renderContactsAccounts();
                 if (currentAccountId === id) {
                     loadMailbox('INBOX');
                 }
@@ -574,8 +662,8 @@
             document.getElementById('settings-modal').style.display = 'flex';
             loadSettings();
             renderAccountsInSettings();
+            renderContactsAccounts();
         }
-
         function closeSettings() {
             saveAllSettings();
             document.getElementById('settings-modal').style.display = 'none';
@@ -760,23 +848,23 @@
                 document.getElementById('message-list').innerHTML = '<div style="padding: 20px; text-align: center;">Searching...</div>';
                 document.getElementById('view-name').innerText = `Search: ${query}`;
                 hideMessageDetail();
-                
+
                 // Remove active state from sidebar
                 document.querySelectorAll('.mailbox-item').forEach(item => item.classList.remove('active'));
             }
 
-            // For search, we use the currently active account OR the first account
-            let accId = currentAccountId || (accounts.length > 0 ? accounts[0].id : null);
-            if (!accId) {
-                alert("Please add an account first");
-                return;
+            // Determine the search URL based on current context
+            let url = "";
+            if (currentAccountId === null) {
+                url = `/unified/search?q=${encodeURIComponent(query)}&max_results=20`;
+            } else {
+                url = `/accounts/${currentAccountId}/search?q=${encodeURIComponent(query)}&max_results=20`;
             }
 
             try {
-                let url = `/accounts/${accId}/search?q=${encodeURIComponent(query)}&max_results=20`;
                 if (append && nextPageToken) url += `&page_token=${nextPageToken}`;
                 if (refresh) url += `&refresh=true`;
-                
+
                 const res = await fetch(url);
                 if (!res.ok) {
                     const error = await res.json();
@@ -786,7 +874,7 @@
                 }
                 const data = await res.json();
                 nextPageToken = data.nextPageToken || null;
-                
+
                 document.getElementById('load-more-btn').style.display = nextPageToken ? 'inline-block' : 'none';
                 renderMessages(data.messages, append);
             } catch (err) {
@@ -795,6 +883,53 @@
             }
         }
 
+        function toggleAdvancedSearch(event) {
+            if (event) event.stopPropagation();
+            const dropdown = document.getElementById('advanced-search-dropdown');
+            dropdown.classList.toggle('open');
+        }
+
+        function performAdvancedSearch() {
+            const from = document.getElementById('adv-from').value;
+            const subject = document.getElementById('adv-subject').value;
+            const body = document.getElementById('adv-body').value;
+            const after = document.getElementById('adv-date-after').value;
+            const before = document.getElementById('adv-date-before').value;
+            const hasAttachment = document.getElementById('adv-has-attachment').checked;
+
+            let queryParts = [];
+            if (from) queryParts.push(`from:${from}`);
+            if (subject) queryParts.push(`subject:${subject}`);
+            if (body) queryParts.push(body);
+            if (after) queryParts.push(`after:${after.replace(/-/g, '/')}`);
+            if (before) queryParts.push(`before:${before.replace(/-/g, '/')}`);
+            if (hasAttachment) queryParts.push(`has:attachment`);
+
+            const query = queryParts.join(' ');
+            if (query) {
+                document.getElementById('search-input').value = query;
+                performSearch();
+            }
+            toggleAdvancedSearch();
+        }
+
+        function clearAdvancedSearch() {
+            document.getElementById('adv-from').value = '';
+            document.getElementById('adv-subject').value = '';
+            document.getElementById('adv-body').value = '';
+            document.getElementById('adv-date-after').value = '';
+            document.getElementById('adv-date-before').value = '';
+            document.getElementById('adv-has-attachment').checked = false;
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const dropdown = document.getElementById('advanced-search-dropdown');
+            const toggle = document.getElementById('advanced-search-toggle');
+            if (dropdown && dropdown.classList.contains('open') && !dropdown.contains(e.target) && !toggle.contains(e.target)) {
+                dropdown.classList.remove('open');
+            }
+        });
         function renderMessages(messages, append = false) {
             const list = document.getElementById('message-list');
             if (!append) {
