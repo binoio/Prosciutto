@@ -283,12 +283,13 @@ def get_detailed_messages_batch(service, messages_meta, format="metadata", metad
             "id": response["id"],
             "snippet": response.get("snippet", ""),
             "threadId": response.get("threadId", ""),
-            "labelIds": response.get("labelIds", []),
+            "labelIds": response.get("labelIds") or [],
             "internalDate": int(response.get("internalDate", 0)),
             "subject": get_header(headers, "Subject"),
             "from": get_header(headers, "From"),
             "date": get_header(headers, "Date")
         }
+        logger.debug(f"Message {response['id']} labels: {detailed_messages_dict[request_id]['labelIds']}")
 
     batch = service.new_batch_http_request(callback=callback)
     
@@ -708,7 +709,7 @@ async def unified_messages(label: str = None, refresh: bool = False, session: Se
             service = get_gmail_service(account.id, session)
             if not service: continue
             
-            kwargs = {"userId": "me", "maxResults": 10}
+            kwargs = {"userId": "me", "maxResults": 50}
             if label:
                 kwargs["labelIds"] = [label]
 
