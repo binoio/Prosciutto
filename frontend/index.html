@@ -53,8 +53,12 @@
             </div>
             <div id="accounts-ALL" class="account-subset"></div>
 
-            <div style="margin-top: 20px; padding: 0 15px; font-weight: bold; color: var(--text-gray); font-size: 12px; text-transform: uppercase;">Labels</div>
+            <div class="sidebar-labels-header" style="margin-top: 20px; padding: 0 15px; font-weight: bold; color: var(--text-gray); font-size: 12px; text-transform: uppercase;">Labels</div>
             <div id="labels-container"></div>
+        </div>
+        
+        <div id="sidebar-toggle-widget" onclick="toggleSidebarCollapse()" style="margin-top: auto; padding: 15px; text-align: center; border-top: 1px solid var(--border-gray); cursor: pointer; color: var(--text-gray); font-size: 18px;">
+            <i id="sidebar-toggle-icon" class="fa-solid fa-chevron-left"></i>
         </div>
     </div>
     <div id="main">
@@ -432,11 +436,14 @@
             for (const acc of accounts) {
                 const accItem = document.createElement('div');
                 accItem.className = 'mailbox-item';
+                accItem.style.display = 'flex';
+                accItem.style.alignItems = 'center';
                 accItem.innerHTML = `
                     <span class="disclosure-triangle visible" onclick="toggleDisclosure(event, 'labels-${acc.id}')">▶</span>
-                    <i class="fa-solid fa-folder" style="margin-right: 8px;"></i> ${acc.email}
+                    <i class="fa-solid fa-folder" style="margin-right: 8px;"></i> 
+                    <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${acc.email}</span>
+                    <i class="fa-solid fa-plus" style="margin-left: 8px; cursor: pointer; opacity: 0.6; padding: 2px 5px;" onclick="createNewLabel(event, ${acc.id}, '${acc.email}')" title="New Label"></i>
                 `;
-                accItem.onclick = (e) => toggleDisclosure(e, `labels-${acc.id}`);
                 container.appendChild(accItem);
 
                 const subset = document.createElement('div');
@@ -469,6 +476,30 @@
                 } catch (e) {
                     console.error(`Failed to load labels for ${acc.email}`, e);
                 }
+            }
+        }
+
+        async function createNewLabel(event, accId, email) {
+            event.stopPropagation();
+            const name = prompt(`Enter name for new label in ${email}:`);
+            if (!name) return;
+            
+            try {
+                const res = await fetch(`/accounts/${accId}/labels`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name })
+                });
+                
+                if (res.ok) {
+                    await loadLabels();
+                } else {
+                    const error = await res.json();
+                    alert("Error creating label: " + (error.detail || "Unknown error"));
+                }
+            } catch (err) {
+                console.error(err);
+                alert("An error occurred while creating the label");
             }
         }
 
@@ -1072,6 +1103,7 @@
                             <button class="action-btn" onclick="renderComposerInPanel('${msg.id}', ${accId}, 'forward')" title="Forward"><i class="fa-solid fa-share"></i></button>
                             <div style="flex: 1;"></div>
                             <button class="action-btn" onclick="archiveMessage('${msg.id}', ${accId})" title="Archive"><i class="fa-solid fa-box-archive"></i></button>
+                            <button class="action-btn" id="label-picker-btn" onclick="showLabelPicker(event, '${msg.id}', ${accId})" title="Label"><i class="fa-solid fa-tag"></i></button>
                             <button class="action-btn" onclick="trashMessage('${msg.id}', ${accId})" title="${trashTitle}" ${trashDisabledAttr} ${trashStyleAttr}><i class="fa-solid ${trashIcon}"></i></button>
                             ${isSingleView ? '' : '<span class="back-btn" onclick="hideMessageDetail()" style="margin-left: 10px;"><i class="fa-solid fa-xmark"></i></span>'}
                         </div>
@@ -1418,6 +1450,101 @@
             }
         }
 
+        async function showLabelPicker(event, msgId, accId) {
+            event.stopPropagation();
+            
+            // Remove existing picker if any
+            const existing = document.getElementById('label-picker-dropdown');
+            if (existing) {
+                existing.remove();
+                if (existing.dataset.msgId === msgId) return;
+            }
+
+            const btn = event.currentTarget;
+            const rect = btn.getBoundingClientRect();
+
+            const dropdown = document.createElement('div');
+            dropdown.id = 'label-picker-dropdown';
+            dropdown.dataset.msgId = msgId;
+            dropdown.style.position = 'fixed';
+            dropdown.style.top = `${rect.bottom + 5}px`;
+            dropdown.style.left = `${rect.left}px`;
+            dropdown.style.background = 'var(--bg-white)';
+            dropdown.style.border = '1px solid var(--border-gray)';
+            dropdown.style.borderRadius = '4px';
+            dropdown.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
+            dropdown.style.zIndex = '1000';
+            dropdown.style.maxHeight = '300px';
+            dropdown.style.overflowY = 'auto';
+            dropdown.style.minWidth = '150px';
+            dropdown.innerHTML = '<div style="padding: 10px; font-size: 12px; color: var(--text-gray);">Loading labels...</div>';
+            
+            document.body.appendChild(dropdown);
+
+            // Close when clicking outside
+            const closeHandler = (e) => {
+                if (!dropdown.contains(e.target) && e.target !== btn) {
+                    dropdown.remove();
+                    document.removeEventListener('click', closeHandler);
+                }
+            };
+            setTimeout(() => document.addEventListener('click', closeHandler), 0);
+
+            try {
+                const res = await fetch(`/accounts/${accId}/labels`);
+                const labels = await res.json();
+                
+                if (labels.length === 0) {
+                    dropdown.innerHTML = '<div style="padding: 10px; font-size: 12px; color: var(--text-gray);">No labels found</div>';
+                } else {
+                    dropdown.innerHTML = '';
+                    labels.forEach(l => {
+                        const item = document.createElement('div');
+                        item.className = 'label-picker-item';
+                        item.style.padding = '8px 15px';
+                        item.style.cursor = 'pointer';
+                        item.style.fontSize = '13px';
+                        item.innerText = l.name;
+                        item.onclick = async () => {
+                            dropdown.innerHTML = '<div style="padding: 10px; font-size: 12px; color: var(--text-gray);">Applying...</div>';
+                            await applyLabel(msgId, accId, l.id);
+                            dropdown.remove();
+                            document.removeEventListener('click', closeHandler);
+                        };
+                        item.onmouseover = () => item.style.background = 'var(--bg-light-gray)';
+                        item.onmouseout = () => item.style.background = 'transparent';
+                        dropdown.appendChild(item);
+                    });
+                }
+            } catch (err) {
+                console.error(err);
+                dropdown.innerHTML = '<div style="padding: 10px; font-size: 12px; color: var(--accent-red);">Error loading labels</div>';
+            }
+        }
+
+        async function applyLabel(msgId, accId, labelId) {
+            try {
+                const res = await fetch(`/accounts/${accId}/messages/batch-modify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ids: [msgId],
+                        addLabelIds: [labelId]
+                    })
+                });
+                
+                if (res.ok) {
+                    console.log(`Label ${labelId} applied to ${msgId}`);
+                } else {
+                    const error = await res.json();
+                    alert("Error applying label: " + (error.detail || "Unknown error"));
+                }
+            } catch (err) {
+                console.error(err);
+                alert("An error occurred while applying the label");
+            }
+        }
+
         function openMessageInNewWindow(id, accId) {
             if (!accId) accId = accounts[0].id;
             const url = `?messageId=${id}&accountId=${accId}`;
@@ -1530,6 +1657,21 @@
                 applyTheme('automatic');
             }
         });
+
+        function toggleSidebarCollapse() {
+            const sidebar = document.getElementById('sidebar');
+            const icon = document.getElementById('sidebar-toggle-icon');
+            
+            sidebar.classList.toggle('collapsed');
+            
+            if (sidebar.classList.contains('collapsed')) {
+                icon.classList.remove('fa-chevron-left');
+                icon.classList.add('fa-chevron-right');
+            } else {
+                icon.classList.remove('fa-chevron-right');
+                icon.classList.add('fa-chevron-left');
+            }
+        }
 
         init();
     </script>

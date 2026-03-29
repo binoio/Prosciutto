@@ -42,6 +42,9 @@ body {
     border-right: 1px solid var(--border-gray); 
     display: flex;
     flex-direction: column;
+    transition: width 0.2s ease;
+    overflow-x: hidden;
+    white-space: nowrap;
 }
 
 #compose-area { padding: 10px 20px; margin-bottom: 10px; }
@@ -305,3 +308,53 @@ body.resizing, body.resizing * { cursor: col-resize !important; }
     box-sizing: border-box;
     max-width: 100%;
 }
+
+/* Sidebar Collapsed State */
+#sidebar.collapsed {
+    width: 72px;
+}
+
+#sidebar.collapsed .mailbox-item {
+    font-size: 0;
+    padding: 10px;
+    justify-content: center;
+    margin-right: 0;
+    border-radius: 0;
+}
+
+#sidebar.collapsed .mailbox-item i {
+    font-size: 18px;
+    margin-right: 0 !important;
+}
+
+#sidebar.collapsed .disclosure-triangle,
+#sidebar.collapsed .sidebar-labels-header {
+    display: none;
+}
+
+#sidebar.collapsed #compose-area {
+    padding: 10px 0;
+}
+
+#sidebar.collapsed .compose-btn {
+    font-size: 0;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 50%;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#sidebar.collapsed .compose-btn::after {
+    content: "+";
+    font-size: 24px;
+    line-height: 1;
+}
+
+#sidebar.collapsed .account-subset {
+    display: none !important;
+}
+

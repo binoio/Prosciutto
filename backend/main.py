@@ -12,6 +12,8 @@ import json
 import httpx
 import urllib.parse
 from dotenv import load_dotenv
+from email.mime.text import MIMEText
+from pydantic import BaseModel
 
 # Load .env file if it exists
 load_dotenv()
@@ -324,6 +326,27 @@ async def list_labels(account_id: int, session: Session = Depends(get_session)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class CreateLabelRequest(BaseModel):
+    name: str
+
+@app.post("/accounts/{account_id}/labels")
+async def create_label(account_id: int, request: CreateLabelRequest, session: Session = Depends(get_session)):
+    service = get_gmail_service(account_id, session)
+    if not service:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    try:
+        label = {
+            "name": request.name,
+            "labelListVisibility": "labelShow",
+            "messageListVisibility": "show"
+        }
+        created_label = service.users().labels().create(userId="me", body=label).execute()
+        return created_label
+    except Exception as e:
+        logger.error(f"Error creating label: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/accounts/{account_id}/messages")
 async def list_messages(account_id: int, label: str = None, page_token: str = None, refresh: bool = False, session: Session = Depends(get_session)):
     service = get_gmail_service(account_id, session)
@@ -493,9 +516,6 @@ async def get_message(account_id: int, message_id: str, session: Session = Depen
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-from email.mime.text import MIMEText
-from pydantic import BaseModel
 
 class SendEmailRequest(BaseModel):
     to: str

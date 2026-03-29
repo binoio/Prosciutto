@@ -99,3 +99,62 @@ def test_empty_unified_label(mock_creds_class, mock_build, client: TestClient, s
     response = client.delete("/unified/labels/SPAM/empty")
     assert response.status_code == 200
     assert len(response.json()["results"]) == 2
+
+@patch("backend.main.build")
+@patch("backend.main.Credentials")
+def test_create_label(mock_creds_class, mock_build, client: TestClient, session: Session):
+    account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
+    session.add(account)
+    session.commit()
+    
+    mock_creds = MagicMock()
+    mock_creds.expired = False
+    mock_creds_class.from_authorized_user_info.return_value = mock_creds
+    
+    mock_service = MagicMock()
+    mock_build.return_value = mock_service
+    mock_service.users().labels().create().execute.return_value = {
+        "id": "Label_2",
+        "name": "New Label",
+        "type": "user"
+    }
+    
+    response = client.post(f"/accounts/{account.id}/labels", json={"name": "New Label"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "New Label"
+    assert data["id"] == "Label_2"
+    
+    # Verify Gmail API call
+    mock_service.users().labels().create.assert_called()
+    _, kwargs = mock_service.users().labels().create.call_args
+    assert kwargs["body"]["name"] == "New Label"
+
+@patch("backend.main.build")
+@patch("backend.main.Credentials")
+def test_apply_label_to_message(mock_creds_class, mock_build, client: TestClient, session: Session):
+    account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
+    session.add(account)
+    session.commit()
+    
+    mock_creds = MagicMock()
+    mock_creds.expired = False
+    mock_creds_class.from_authorized_user_info.return_value = mock_creds
+    
+    mock_service = MagicMock()
+    mock_build.return_value = mock_service
+    mock_service.users().messages().batchModify.return_value.execute.return_value = {}
+    
+    payload = {
+        "ids": ["msg123"],
+        "addLabelIds": ["Label_123"]
+    }
+    
+    response = client.post(f"/accounts/{account.id}/messages/batch-modify", json=payload)
+    assert response.status_code == 200
+    
+    # Verify Gmail API call
+    mock_service.users().messages().batchModify.assert_called_once()
+    _, kwargs = mock_service.users().messages().batchModify.call_args
+    assert kwargs["body"]["ids"] == ["msg123"]
+    assert kwargs["body"]["addLabelIds"] == ["Label_123"]
