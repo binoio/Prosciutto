@@ -110,6 +110,7 @@ async def get_settings(session: Session = Depends(get_session)):
         "THEME": settings_dict.get("THEME", "automatic"),
         "SHOW_DISCLOSURE_IF_SINGLE": settings_dict.get("SHOW_DISCLOSURE_IF_SINGLE", "false"),
         "SHOW_STARRED": settings_dict.get("SHOW_STARRED", "false"),
+        "ALWAYS_COLLAPSE_SIDEBAR": settings_dict.get("ALWAYS_COLLAPSE_SIDEBAR", "false"),
         "COMPOSE_NEW_WINDOW": settings_dict.get("COMPOSE_NEW_WINDOW", "true"),
         "WARN_BEFORE_DELETE": settings_dict.get("WARN_BEFORE_DELETE", "true"),
         "MARK_READ_AUTOMATICALLY": settings_dict.get("MARK_READ_AUTOMATICALLY", "true"),
@@ -691,8 +692,8 @@ async def empty_label(account_id: int, label_id: str, session: Session = Depends
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/unified/messages")
-async def unified_messages(label: str = None, refresh: bool = False, session: Session = Depends(get_session)):
-    cache_key = f"unified_messages_{label}"
+async def unified_messages(label: str = None, page_token: str = None, refresh: bool = False, session: Session = Depends(get_session)):
+    cache_key = f"unified_messages_{label}_{page_token}"
     if not refresh:
         cached_result = cache.get(cache_key)
         if cached_result:
@@ -701,20 +702,40 @@ async def unified_messages(label: str = None, refresh: bool = False, session: Se
     accounts = session.exec(select(Account).where(Account.is_active)).all()
     
     all_messages = []
-    import asyncio
+    
+    # Decode page_token if provided (it's a base64-encoded JSON mapping account_id -> individual token)
+    tokens = {}
+    if page_token:
+        try:
+            tokens = json.loads(base64.urlsafe_b64decode(page_token).decode("utf-8"))
+        except Exception:
+            tokens = {}
+            
+    new_tokens = {}
     
     # We could use asyncio to fetch in parallel
     for account in accounts:
         try:
+            acc_id_str = str(account.id)
+            # If we have a page_token but this account has no more pages, skip it
+            if page_token and acc_id_str not in tokens:
+                continue
+                
             service = get_gmail_service(account.id, session)
             if not service: continue
             
             kwargs = {"userId": "me", "maxResults": 50}
             if label:
                 kwargs["labelIds"] = [label]
+            if acc_id_str in tokens:
+                kwargs["pageToken"] = tokens[acc_id_str]
 
             results = service.users().messages().list(**kwargs).execute()
             messages_meta = results.get("messages", [])
+            
+            # Capture the next token for this account if it exists
+            if results.get("nextPageToken"):
+                new_tokens[acc_id_str] = results["nextPageToken"]
             
             detailed_messages = get_detailed_messages_batch(service, messages_meta, format="metadata", metadata_headers=["Subject", "From", "Date"])
             
@@ -726,9 +747,89 @@ async def unified_messages(label: str = None, refresh: bool = False, session: Se
             # For unified view, we might want to just skip failed accounts or log them
             continue
     
+    # Encode new tokens into a single base64 string for the frontend
+    next_page_token_str = None
+    if new_tokens:
+        next_page_token_str = base64.urlsafe_b64encode(json.dumps(new_tokens).encode("utf-8")).decode("utf-8")
+        
     # Sort by date descending
     all_messages.sort(key=lambda x: x["internalDate"], reverse=True)
-    response_data = {"messages": all_messages, "nextPageToken": None}
+    response_data = {"messages": all_messages, "nextPageToken": next_page_token_str}
+    cache.set(cache_key, response_data, expire=300)
+    return response_data
+
+@app.get("/unified/search")
+async def unified_search(
+    q: str = None, 
+    page_token: str = None, 
+    max_results: int = 20, 
+    session: Session = Depends(get_session)
+):
+    cache_key = f"unified_search_{q}_{page_token}_{max_results}"
+    cached_result = cache.get(cache_key)
+    if cached_result:
+        return cached_result
+
+    accounts = session.exec(select(Account).where(Account.is_active)).all()
+    all_messages = []
+    
+    # Decode page_token if provided (it's a base64-encoded JSON mapping account_id -> individual token)
+    tokens = {}
+    if page_token:
+        try:
+            tokens = json.loads(base64.urlsafe_b64decode(page_token).decode("utf-8"))
+        except Exception:
+            tokens = {}
+            
+    new_tokens = {}
+    
+    for account in accounts:
+        try:
+            acc_id_str = str(account.id)
+            if page_token and acc_id_str not in tokens:
+                continue
+                
+            service = get_gmail_service(account.id, session)
+            if not service: continue
+            
+            kwargs = {
+                "userId": "me", 
+                "maxResults": max_results,
+                "fields": "messages(id,threadId),nextPageToken"
+            }
+            if q:
+                kwargs["q"] = q
+            if acc_id_str in tokens:
+                kwargs["pageToken"] = tokens[acc_id_str]
+
+            results = service.users().messages().list(**kwargs).execute()
+            messages_meta = results.get("messages", [])
+            
+            if results.get("nextPageToken"):
+                new_tokens[acc_id_str] = results["nextPageToken"]
+            
+            detailed_messages = get_detailed_messages_batch(
+                service, 
+                messages_meta, 
+                format="metadata", 
+                metadata_headers=["Subject", "From", "Date"]
+            )
+            
+            for m in detailed_messages:
+                m["accountEmail"] = account.email
+                m["accountId"] = account.id
+                all_messages.append(m)
+        except Exception:
+            continue
+    
+    # Encode new tokens into a single base64 string for the frontend
+    next_page_token_str = None
+    if new_tokens:
+        next_page_token_str = base64.urlsafe_b64encode(json.dumps(new_tokens).encode("utf-8")).decode("utf-8")
+        
+    # Sort by date descending
+    all_messages.sort(key=lambda x: x["internalDate"], reverse=True)
+    response_data = {"messages": all_messages, "nextPageToken": next_page_token_str}
     cache.set(cache_key, response_data, expire=300)
     return response_data
 

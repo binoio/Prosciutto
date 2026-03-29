@@ -78,10 +78,15 @@ body {
 .disclosure-triangle {
     margin-right: 10px;
     cursor: pointer;
-    width: 12px;
-    display: inline-block;
+    width: 14px;
+    height: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     transition: transform 0.2s;
     visibility: hidden; /* Default hidden, shown via JS if setting/accounts allow */
+    font-size: 10px;
+    flex-shrink: 0;
 }
 .disclosure-triangle.visible { visibility: visible; }
 .disclosure-triangle.expanded { transform: rotate(90deg); }
@@ -134,7 +139,10 @@ body {
 
 #labels-container {
     display: flex;
-    flex-flow: column;
+    flex-direction: column;
+}
+
+#sidebar.collapsed #labels-container {
     align-items: center;
 }
 
@@ -158,7 +166,7 @@ body {
 }
 
 #message-list-header {
-    padding: 10px 20px;
+    padding: 10px 38px;
     border-bottom: 1px solid var(--border-gray);
     display: flex;
     align-items: center;
@@ -261,13 +269,57 @@ body.resizing, body.resizing * { cursor: col-resize !important; }
 }
 #search-input {
     width: 100%;
-    padding: 8px 10px 8px 45px;
+    padding: 8px 45px 8px 45px;
     border: 1px solid var(--border-gray);
     border-radius: 8px;
     background: var(--bg-light-gray);
     outline: none;
     color: var(--text-dark);
     font-size: 14px;
+}
+
+.advanced-search-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--bg-white);
+    border: 1px solid var(--border-gray);
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    z-index: 100;
+    margin-top: 5px;
+    padding: 20px;
+    display: none;
+}
+.advanced-search-dropdown.open {
+    display: block;
+}
+.advanced-search-form .form-row {
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+}
+.advanced-search-form .form-row label {
+    width: 120px;
+    font-size: 13px;
+    color: var(--text-gray);
+}
+.advanced-search-form .form-row input[type="text"],
+.advanced-search-form .form-row input[type="date"] {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid var(--border-gray);
+    border-radius: 4px;
+    font-size: 14px;
+    background: var(--bg-white);
+    color: var(--text-dark);
+}
+.advanced-search-form .form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
 }
 
 #action-dropdown, .form-group input, .form-group select, .form-group textarea {

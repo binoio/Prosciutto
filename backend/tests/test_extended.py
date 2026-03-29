@@ -190,3 +190,114 @@ def test_unified_inbox_message_count(mock_creds_class, mock_build, client: TestC
         # If we want it to be ACCURATE, it should be 50 if there are 50.
         assert len(data["messages"]) == 50
 
+@patch("backend.main.build")
+@patch("backend.main.Credentials")
+def test_unified_inbox_pagination(mock_creds_class, mock_build, client: TestClient, session: Session):
+    import base64
+    import json
+    
+    # Add two accounts
+    acc1 = Account(email="a1@example.com", credentials_json='{"token": "f1"}', is_active=True)
+    acc2 = Account(email="a2@example.com", credentials_json='{"token": "f2"}', is_active=True)
+    session.add(acc1)
+    session.add(acc2)
+    session.commit()
+    
+    mock_creds = MagicMock()
+    mock_creds.expired = False
+    mock_creds_class.from_authorized_user_info.return_value = mock_creds
+    
+    with patch("backend.main.get_gmail_service") as mock_get_service:
+        s1 = MagicMock()
+        s2 = MagicMock()
+        mock_get_service.side_effect = [s1, s2, s1, s2] # Needed for two separate calls
+        
+        # Initial call: Both have more pages
+        s1.users().messages().list().execute.return_value = {
+            "messages": [{"id": "a1_m1"}],
+            "nextPageToken": "a1_token1"
+        }
+        s2.users().messages().list().execute.return_value = {
+            "messages": [{"id": "a2_m1"}],
+            "nextPageToken": "a2_token1"
+        }
+        
+        s1.new_batch_http_request.side_effect = lambda callback: MockBatch(callback, {"a1_m1": {"id": "a1_m1", "internalDate": "100"}})
+        s2.new_batch_http_request.side_effect = lambda callback: MockBatch(callback, {"a2_m1": {"id": "a2_m1", "internalDate": "200"}})
+        
+        response = client.get("/unified/messages")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["messages"]) == 2
+        
+        # Verify nextPageToken
+        encoded_token = data.get("nextPageToken")
+        assert encoded_token is not None
+        decoded_token = json.loads(base64.urlsafe_b64decode(encoded_token).decode("utf-8"))
+        assert decoded_token == {str(acc1.id): "a1_token1", str(acc2.id): "a2_token1"}
+        
+        # Second call: Use the page_token
+        # S1: No more pages
+        s1.users().messages().list().execute.return_value = {
+            "messages": [{"id": "a1_m2"}]
+        }
+        # S2: One more page
+        s2.users().messages().list().execute.return_value = {
+            "messages": [{"id": "a2_m2"}],
+            "nextPageToken": "a2_token2"
+        }
+        
+        s1.new_batch_http_request.side_effect = lambda callback: MockBatch(callback, {"a1_m2": {"id": "a1_m2", "internalDate": "50"}})
+        s2.new_batch_http_request.side_effect = lambda callback: MockBatch(callback, {"a2_m2": {"id": "a2_m2", "internalDate": "150"}})
+        
+        response = client.get(f"/unified/messages?page_token={encoded_token}")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["messages"]) == 2
+        
+        # Verify new nextPageToken (only S2 has it)
+        encoded_token2 = data.get("nextPageToken")
+        assert encoded_token2 is not None
+        decoded_token2 = json.loads(base64.urlsafe_b64decode(encoded_token2).decode("utf-8"))
+        assert decoded_token2 == {str(acc2.id): "a2_token2"}
+
+@patch("backend.main.build")
+@patch("backend.main.Credentials")
+def test_unified_search(mock_creds_class, mock_build, client: TestClient, session: Session):
+    # Add two accounts
+    acc1 = Account(email="a1@example.com", credentials_json='{"token": "f1"}', is_active=True)
+    acc2 = Account(email="a2@example.com", credentials_json='{"token": "f2"}', is_active=True)
+    session.add(acc1)
+    session.add(acc2)
+    session.commit()
+    
+    mock_creds = MagicMock()
+    mock_creds.expired = False
+    mock_creds_class.from_authorized_user_info.return_value = mock_creds
+    
+    with patch("backend.main.get_gmail_service") as mock_get_service:
+        s1 = MagicMock()
+        s2 = MagicMock()
+        mock_get_service.side_effect = [s1, s2]
+        
+        # S1: Returns one message for "test"
+        s1.users().messages().list().execute.return_value = {
+            "messages": [{"id": "s1_m1"}],
+        }
+        # S2: Returns one message for "test"
+        s2.users().messages().list().execute.return_value = {
+            "messages": [{"id": "s2_m1"}],
+        }
+        
+        s1.new_batch_http_request.side_effect = lambda callback: MockBatch(callback, {"s1_m1": {"id": "s1_m1", "internalDate": "100"}})
+        s2.new_batch_http_request.side_effect = lambda callback: MockBatch(callback, {"s2_m1": {"id": "s2_m1", "internalDate": "200"}})
+        
+        response = client.get("/unified/search?q=test")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["messages"]) == 2
+        # Verify both accounts are represented
+        emails = [m["accountEmail"] for m in data["messages"]]
+        assert "a1@example.com" in emails
+        assert "a2@example.com" in emails
+
