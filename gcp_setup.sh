@@ -32,8 +32,23 @@ function check_gcloud() {
 
 function configure_local_env() {
     echo -e "\n${BLUE}--- Local OAuth Configuration ---${NC}"
+    echo "Choose application type:"
+    echo "1) Web application (Client ID + Secret)"
+    echo "2) Desktop app (Client ID only)"
+    read -p "Type (1/2, default 1): " APP_TYPE_CHOICE
+    
+    if [ "$APP_TYPE_CHOICE" == "2" ]; then
+        OAUTH_APP_TYPE="desktop"
+    else
+        OAUTH_APP_TYPE="web"
+    fi
+
     read -p "Enter Google Client ID: " GOOGLE_CLIENT_ID
-    read -p "Enter Google Client Secret: " GOOGLE_CLIENT_SECRET
+    if [ "$OAUTH_APP_TYPE" == "web" ]; then
+        read -p "Enter Google Client Secret: " GOOGLE_CLIENT_SECRET
+    else
+        GOOGLE_CLIENT_SECRET=""
+    fi
     
     # Use current project ID if available
     PROJECT_ID=$(gcloud config get-value project 2>/dev/null)
@@ -44,7 +59,8 @@ function configure_local_env() {
     mkdir -p "backend"
     
     echo -e "${GREEN}Writing configuration to $ENV_FILE...${NC}"
-    echo "GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID" > "$ENV_FILE"
+    echo "OAUTH_APP_TYPE=$OAUTH_APP_TYPE" > "$ENV_FILE"
+    echo "GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID" >> "$ENV_FILE"
     echo "GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET" >> "$ENV_FILE"
     echo "GOOGLE_PROJECT_ID=$PROJECT_ID" >> "$ENV_FILE"
     
@@ -62,8 +78,9 @@ function create_project() {
     
     echo -e "${YELLOW}Important:${NC} You MUST create OAuth2 credentials manually in the console:"
     echo "https://console.cloud.google.com/apis/credentials?project=$PROJECT_ID"
-    echo "1. Create 'OAuth client ID' for 'Web application'."
-    echo "2. Add Authorized Redirect URI: http://localhost:8000/auth/callback"
+    echo "1. Create 'OAuth client ID'."
+    echo "2. Select 'Web application' (requires secret) OR 'Desktop app' (no secret needed)."
+    echo "3. Add Authorized Redirect URI: http://localhost:8000/auth/callback"
 
     read -p "Do you want to configure your local .env file now? (y/n): " configure_now
     if [ "$configure_now" == "y" ]; then

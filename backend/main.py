@@ -88,17 +88,23 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 def get_client_config():
     client_id = os.getenv("GOOGLE_CLIENT_ID")
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+    app_type = os.getenv("OAUTH_APP_TYPE", "web")
     
     # Using local engine from backend.db
     from backend.db import engine
     with Session(engine) as session:
         client_id_setting = session.exec(select(Setting).where(Setting.key == "GOOGLE_CLIENT_ID")).first()
         client_secret_setting = session.exec(select(Setting).where(Setting.key == "GOOGLE_CLIENT_SECRET")).first()
+        app_type_setting = session.exec(select(Setting).where(Setting.key == "OAUTH_APP_TYPE")).first()
+        
         client_id = client_id or (client_id_setting.value if client_id_setting else None)
         client_secret = client_secret or (client_secret_setting.value if client_secret_setting else None)
+        app_type = app_type or (app_type_setting.value if app_type_setting else "web")
 
-    if not client_id or not client_secret:
-        raise HTTPException(status_code=500, detail="Google Client ID or Secret not configured")
+    if not client_id:
+        raise HTTPException(status_code=500, detail="Google Client ID not configured")
+    if app_type == "web" and not client_secret:
+        raise HTTPException(status_code=500, detail="Google Client Secret not configured for Web App mode")
 
     return {
         "web": {
@@ -106,6 +112,7 @@ def get_client_config():
             "client_secret": client_secret,
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
+            "app_type": app_type
         }
     }
 
@@ -117,12 +124,15 @@ async def get_settings(session: Session = Depends(get_session)):
     # Check if set via environment variables
     env_client_id = os.getenv("GOOGLE_CLIENT_ID")
     env_client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+    env_app_type = os.getenv("OAUTH_APP_TYPE")
     
     return {
         "GOOGLE_CLIENT_ID": env_client_id or settings_dict.get("GOOGLE_CLIENT_ID", ""),
         "GOOGLE_CLIENT_SECRET": env_client_secret or settings_dict.get("GOOGLE_CLIENT_SECRET", ""),
+        "OAUTH_APP_TYPE": env_app_type or settings_dict.get("OAUTH_APP_TYPE", "web"),
         "is_client_id_env": env_client_id is not None,
         "is_client_secret_env": env_client_secret is not None,
+        "is_app_type_env": env_app_type is not None,
         # Default appearance settings
         "THEME": settings_dict.get("THEME", "automatic"),
         "SHOW_DISCLOSURE_IF_SINGLE": settings_dict.get("SHOW_DISCLOSURE_IF_SINGLE", "false"),
@@ -222,17 +232,24 @@ async def root(request: Request):
 
 app.mount("/styles", StaticFiles(directory=os.path.join(BASE_DIR, "../frontend/styles")), name="styles")
 
+import hashlib
+
+def generate_pkce_verifier():
+    return secrets.token_urlsafe(64)
+
+def generate_pkce_challenge(verifier):
+    digest = hashlib.sha256(verifier.encode('utf-8')).digest()
+    return base64.urlsafe_b64encode(digest).decode('utf-8').replace('=', '')
+
 @app.get("/auth/login")
-async def login(request: Request):
+async def login(request: Request, session: Session = Depends(get_session)):
     client_config = get_client_config()
+    app_type = client_config["web"].get("app_type", "web")
     redirect_uri = str(request.url_for("auth_callback"))
     # In some environments (like behind a proxy), url_for might return http instead of https
     if os.getenv("FORCE_HTTPS"):
         redirect_uri = redirect_uri.replace("http://", "https://")
     
-    # Manually build authorization URL to avoid PKCE 'Missing code verifier' issues
-    # we're not using a stateful session to store the code_verifier, and 
-    # for 'Web Server' apps with a client_secret, PKCE is optional.
     params = {
         "client_id": client_config["web"]["client_id"],
         "redirect_uri": redirect_uri,
@@ -243,6 +260,22 @@ async def login(request: Request):
         "include_granted_scopes": "true",
         "state": secrets.token_hex(16)
     }
+
+    if app_type == "desktop":
+        verifier = generate_pkce_verifier()
+        challenge = generate_pkce_challenge(verifier)
+        # Store verifier in DB for callback
+        # Use a setting to store it temporarily
+        setting = session.exec(select(Setting).where(Setting.key == "LAST_OAUTH_VERIFIER")).first()
+        if not setting:
+            setting = Setting(key="LAST_OAUTH_VERIFIER", value=verifier)
+        else:
+            setting.value = verifier
+        session.add(setting)
+        session.commit()
+        
+        params["code_challenge"] = challenge
+        params["code_challenge_method"] = "S256"
     
     auth_url = f"{client_config['web']['auth_uri']}?{urllib.parse.urlencode(params)}"
     return RedirectResponse(auth_url)
@@ -250,20 +283,27 @@ async def login(request: Request):
 @app.get("/auth/callback")
 async def auth_callback(request: Request, code: str, state: str, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
     client_config = get_client_config()
+    app_type = client_config["web"].get("app_type", "web")
     redirect_uri = str(request.url_for("auth_callback"))
     if os.getenv("FORCE_HTTPS"):
         redirect_uri = redirect_uri.replace("http://", "https://")
     
-    # Manually exchange code for tokens to avoid PKCE 'Missing code verifier' errors
-    # google-auth-oauthlib's Flow requires stateful session for PKCE which we don't have
     token_url = client_config["web"]["token_uri"]
     data = {
         "code": code,
         "client_id": client_config["web"]["client_id"],
-        "client_secret": client_config["web"]["client_secret"],
         "redirect_uri": redirect_uri,
         "grant_type": "authorization_code",
     }
+
+    if app_type == "web":
+        data["client_secret"] = client_config["web"]["client_secret"]
+    else:
+        # Desktop mode using PKCE
+        verifier_setting = session.exec(select(Setting).where(Setting.key == "LAST_OAUTH_VERIFIER")).first()
+        if not verifier_setting:
+            raise HTTPException(status_code=400, detail="Missing code verifier for PKCE exchange")
+        data["code_verifier"] = verifier_setting.value
     
     async with httpx.AsyncClient() as client:
         token_response = await client.post(token_url, data=data)
@@ -278,7 +318,7 @@ async def auth_callback(request: Request, code: str, state: str, background_task
         refresh_token=token_data.get("refresh_token"),
         token_uri=token_url,
         client_id=client_config["web"]["client_id"],
-        client_secret=client_config["web"]["client_secret"],
+        client_secret=client_config["web"].get("client_secret") if app_type == "web" else None,
         scopes=SCOPES
     )
     
