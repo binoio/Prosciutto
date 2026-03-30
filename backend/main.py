@@ -1,8 +1,9 @@
 import base64
 import logging
-from fastapi import FastAPI, Depends, Request, HTTPException
-from typing import Optional
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI, Depends, Request, HTTPException, BackgroundTasks
+from typing import Optional, List
+from fastapi.responses import RedirectResponse, JSONResponse
+from datetime import datetime, timedelta
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -28,7 +29,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from sqlmodel import Session, select
 from backend.db import create_db_and_tables, get_session
-from backend.models import Account, Setting
+from backend.models import Account, Setting, RecentContact, GoogleContact
 from diskcache import Cache
 
 # Initialize Limiter
@@ -44,7 +45,10 @@ def get_requested_scopes():
         "https://www.googleapis.com/auth/gmail.compose",
         "https://www.googleapis.com/auth/gmail.send",
         "https://www.googleapis.com/auth/userinfo.email",
-        "openid"
+        "openid",
+        "https://www.googleapis.com/auth/contacts.readonly",
+        "https://www.googleapis.com/auth/contacts.other.readonly",
+        "https://www.googleapis.com/auth/userinfo.profile"
     ]
     # Default-deny the app's use of or requests for the messages.delete or messages.batchDelete scope
     # unless .env exists and contains a ENABLE_DELETION_SCOPE=true.
@@ -181,8 +185,11 @@ async def login(request: Request):
     auth_url = f"{client_config['web']['auth_uri']}?{urllib.parse.urlencode(params)}"
     return RedirectResponse(auth_url)
 
+from fastapi import Request, Depends, HTTPException, BackgroundTasks
+from fastapi.responses import RedirectResponse, JSONResponse
+
 @app.get("/auth/callback")
-async def auth_callback(request: Request, code: str, state: str, session: Session = Depends(get_session)):
+async def auth_callback(request: Request, code: str, state: str, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
     client_config = get_client_config()
     redirect_uri = str(request.url_for("auth_callback"))
     if os.getenv("FORCE_HTTPS"):
@@ -231,7 +238,12 @@ async def auth_callback(request: Request, code: str, state: str, session: Sessio
     session.add(account)
     session.commit()
     
-    return {"message": f"Account {email} added successfully"}
+    # Trigger warm-up sync for recent contacts
+    background_tasks.add_task(sync_recent_contacts_warmup, account.id)
+    
+    # Redirect to frontend
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:8000")
+    return RedirectResponse(frontend_url)
 
 @app.get("/accounts")
 async def list_accounts(session: Session = Depends(get_session)):
@@ -262,6 +274,128 @@ def get_gmail_service(account_id: int, session: Session):
         logger.error(f"Failed to build Gmail service for account {account_id}: {str(e)}")
         return None
 
+from email.utils import getaddresses
+from datetime import timedelta
+from sqlalchemy import desc
+
+def extract_contacts(address_str: str) -> List[dict]:
+    if not address_str:
+        return []
+    contacts = []
+    # getaddresses takes a list of strings
+    for name, email_addr in getaddresses([address_str]):
+        if email_addr:
+            contacts.append({"name": name, "email": email_addr})
+    return contacts
+
+async def update_recent_contact(account_id: int, email: str, name: Optional[str], session: Session):
+    # Check if exists
+    existing = session.exec(
+        select(RecentContact)
+        .where(RecentContact.account_id == account_id)
+        .where(RecentContact.email == email)
+    ).first()
+    
+    if existing:
+        existing.last_interacted = datetime.utcnow()
+        if name and not existing.name:
+            existing.name = name
+        session.add(existing)
+    else:
+        new_recent = RecentContact(
+            account_id=account_id,
+            email=email,
+            name=name,
+            last_interacted=datetime.utcnow()
+        )
+        session.add(new_recent)
+    
+    session.commit()
+    
+    # Enforce limit of 100 unique recipients per account
+    recents = session.exec(
+        select(RecentContact)
+        .where(RecentContact.account_id == account_id)
+        .order_by(desc(RecentContact.last_interacted))
+    ).all()
+    
+    if len(recents) > 100:
+        for extra in recents[100:]:
+            session.delete(extra)
+        session.commit()
+
+async def sync_recent_contacts_warmup(account_id: int):
+    # Create a new session since the one from Depends(get_session) will be closed
+    from sqlmodel import Session
+    from backend.db import engine
+    with Session(engine) as session:
+        service = get_gmail_service(account_id, session)
+        if not service:
+            return
+        
+        thirty_days_ago = (datetime.utcnow() - timedelta(days=30)).strftime("%Y/%m/%d")
+        query = f"in:sent after:{thirty_days_ago}"
+        
+        try:
+            results = service.users().messages().list(userId="me", q=query, maxResults=500).execute()
+            messages_meta = results.get("messages", [])
+            
+            if not messages_meta:
+                return
+
+            detailed_messages = get_detailed_messages_batch(
+                service, 
+                messages_meta, 
+                format="metadata", 
+                metadata_headers=["To", "Cc", "Bcc"]
+            )
+            
+            for msg in detailed_messages:
+                # internalDate is in ms
+                msg_date = datetime.fromtimestamp(msg["internalDate"] / 1000.0)
+                
+                for header in ["to", "cc", "bcc"]:
+                    val = msg.get(header)
+                    if val:
+                        for contact in extract_contacts(val):
+                            existing = session.exec(
+                                select(RecentContact)
+                                .where(RecentContact.account_id == account_id)
+                                .where(RecentContact.email == contact["email"])
+                            ).first()
+                            
+                            if existing:
+                                if msg_date > existing.last_interacted:
+                                    existing.last_interacted = msg_date
+                                if contact["name"] and not existing.name:
+                                    existing.name = contact["name"]
+                                session.add(existing)
+                            else:
+                                new_recent = RecentContact(
+                                    account_id=account_id,
+                                    email=contact["email"],
+                                    name=contact["name"],
+                                    last_interacted=msg_date
+                                )
+                                session.add(new_recent)
+            
+            session.commit()
+            
+            # Final cleanup to keep only top 100
+            recents = session.exec(
+                select(RecentContact)
+                .where(RecentContact.account_id == account_id)
+                .order_by(desc(RecentContact.last_interacted))
+            ).all()
+            
+            if len(recents) > 100:
+                for extra in recents[100:]:
+                    session.delete(extra)
+                session.commit()
+                
+        except Exception as e:
+            logger.error(f"Error during recent contacts warm-up for account {account_id}: {e}")
+
 def get_header(headers, name):
     for header in headers:
         if header["name"].lower() == name.lower():
@@ -280,16 +414,25 @@ def get_detailed_messages_batch(service, messages_meta, format="metadata", metad
             return
         
         headers = response.get("payload", {}).get("headers", [])
-        detailed_messages_dict[request_id] = {
+        msg_data = {
             "id": response["id"],
             "snippet": response.get("snippet", ""),
             "threadId": response.get("threadId", ""),
             "labelIds": response.get("labelIds") or [],
             "internalDate": int(response.get("internalDate", 0)),
-            "subject": get_header(headers, "Subject"),
-            "from": get_header(headers, "From"),
-            "date": get_header(headers, "Date")
         }
+        
+        # Include all requested metadata headers
+        if metadata_headers:
+            for header_name in metadata_headers:
+                msg_data[header_name.lower()] = get_header(headers, header_name)
+        else:
+            # Default headers if none specified
+            msg_data["subject"] = get_header(headers, "Subject")
+            msg_data["from"] = get_header(headers, "From")
+            msg_data["date"] = get_header(headers, "Date")
+            
+        detailed_messages_dict[request_id] = msg_data
         logger.debug(f"Message {response['id']} labels: {detailed_messages_dict[request_id]['labelIds']}")
 
     batch = service.new_batch_http_request(callback=callback)
@@ -639,6 +782,12 @@ async def send_email(account_id: int, request: SendEmailRequest, session: Sessio
             userId="me",
             body=body
         ).execute()
+        
+        # Update recent contacts
+        for addr in [request.to, request.cc, request.bcc]:
+            if addr:
+                for contact in extract_contacts(addr):
+                    await update_recent_contact(account_id, contact["email"], contact["name"], session)
         
         return {"message": "Email sent", "result": send_result}
     except Exception as e:
