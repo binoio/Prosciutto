@@ -266,13 +266,6 @@
                     <div id="tab-advanced" class="tab-panel">
                         <h4>Google API Configuration</h4>
                         <div class="form-group">
-                            <label>Application Type <span id="app-type-env-badge" class="env-badge" style="display:none">Set via .env</span></label>
-                            <select id="oauth-app-type" onchange="toggleClientSecretVisibility(); saveAllSettings()">
-                                <option value="web">GCP Web Application (Client ID + Secret)</option>
-                                <option value="desktop">GCP Desktop Application (Client ID only)</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
                             <label>Google Client ID <span id="client-id-env-badge" class="env-badge" style="display:none">Set via .env</span></label>
                             <input type="text" id="client-id" placeholder="Client ID" onchange="saveAllSettings()">
                         </div>
@@ -377,7 +370,6 @@
             globalSettings = await res.json();
 
             // Populate General Settings
-            document.getElementById('oauth-app-type').value = globalSettings.OAUTH_APP_TYPE || 'web';
             document.getElementById('client-id').value = globalSettings.GOOGLE_CLIENT_ID || '';
             document.getElementById('client-secret').value = globalSettings.GOOGLE_CLIENT_SECRET || '';
             document.getElementById('setting-compose-window').checked = globalSettings.COMPOSE_NEW_WINDOW !== 'false';
@@ -396,10 +388,6 @@
                 warnDeleteCheckbox.parentElement.style.opacity = "1";
             }
 
-            if (globalSettings.is_app_type_env) {
-                document.getElementById('oauth-app-type').disabled = true;
-                document.getElementById('app-type-env-badge').style.display = 'inline-block';
-            }
             if (globalSettings.is_client_id_env) {
                 document.getElementById('client-id').disabled = true;
                 document.getElementById('client-id-env-badge').style.display = 'inline-block';
@@ -412,7 +400,7 @@
             toggleClientSecretVisibility();
 
             const feedback = document.getElementById('credentials-feedback');
-            if (globalSettings.is_client_id_env || globalSettings.is_client_secret_env || globalSettings.is_app_type_env) {
+            if (globalSettings.is_client_id_env || globalSettings.is_client_secret_env) {
                 feedback.innerText = "Some settings are locked because they are provided via environment variables.";
                 feedback.style.color = "var(--text-gray)";
             } else if (globalSettings.GOOGLE_CLIENT_ID && (globalSettings.OAUTH_APP_TYPE === 'desktop' || globalSettings.GOOGLE_CLIENT_SECRET)) {
@@ -440,7 +428,7 @@
         }
 
         function toggleClientSecretVisibility() {
-            const type = document.getElementById('oauth-app-type').value;
+            const type = globalSettings.OAUTH_APP_TYPE || 'web';
             const secretGroup = document.getElementById('client-secret-group');
             if (type === 'desktop') {
                 secretGroup.style.display = 'none';
@@ -466,7 +454,6 @@
                 .map(cb => cb.dataset.accid)
                 .join(',');
 
-            const appType = document.getElementById('oauth-app-type').value;
             const clientId = document.getElementById('client-id').value;
             const clientSecret = document.getElementById('client-secret').value;
 
@@ -484,9 +471,6 @@
                 AUTOCOMPLETE_ENABLED_ACCOUNTS: autocompleteEnabledAccounts
             };
             // Only include credentials if they are not disabled (not from env)
-            if (!document.getElementById('oauth-app-type').disabled) {
-                data.OAUTH_APP_TYPE = appType;
-            }
             if (!document.getElementById('client-id').disabled) {
                 data.GOOGLE_CLIENT_ID = clientId;
             }

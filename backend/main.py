@@ -95,11 +95,9 @@ def get_client_config():
     with Session(engine) as session:
         client_id_setting = session.exec(select(Setting).where(Setting.key == "GOOGLE_CLIENT_ID")).first()
         client_secret_setting = session.exec(select(Setting).where(Setting.key == "GOOGLE_CLIENT_SECRET")).first()
-        app_type_setting = session.exec(select(Setting).where(Setting.key == "OAUTH_APP_TYPE")).first()
         
         client_id = client_id or (client_id_setting.value if client_id_setting else None)
         client_secret = client_secret or (client_secret_setting.value if client_secret_setting else None)
-        app_type = app_type or (app_type_setting.value if app_type_setting else "web")
 
     if not client_id:
         raise HTTPException(status_code=500, detail="Google Client ID not configured")
@@ -124,15 +122,14 @@ async def get_settings(session: Session = Depends(get_session)):
     # Check if set via environment variables
     env_client_id = os.getenv("GOOGLE_CLIENT_ID")
     env_client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
-    env_app_type = os.getenv("OAUTH_APP_TYPE")
+    app_type = os.getenv("OAUTH_APP_TYPE", "web")
     
     return {
         "GOOGLE_CLIENT_ID": env_client_id or settings_dict.get("GOOGLE_CLIENT_ID", ""),
         "GOOGLE_CLIENT_SECRET": env_client_secret or settings_dict.get("GOOGLE_CLIENT_SECRET", ""),
-        "OAUTH_APP_TYPE": env_app_type or settings_dict.get("OAUTH_APP_TYPE", "web"),
+        "OAUTH_APP_TYPE": app_type,
         "is_client_id_env": env_client_id is not None,
         "is_client_secret_env": env_client_secret is not None,
-        "is_app_type_env": env_app_type is not None,
         # Default appearance settings
         "THEME": settings_dict.get("THEME", "automatic"),
         "SHOW_DISCLOSURE_IF_SINGLE": settings_dict.get("SHOW_DISCLOSURE_IF_SINGLE", "false"),
