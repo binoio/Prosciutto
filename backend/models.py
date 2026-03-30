@@ -12,6 +12,7 @@ class Account(SQLModel, table=True):
     credentials_json: str
     is_active: bool = Field(default=True)
     sync_token: Optional[str] = None
+    other_sync_token: Optional[str] = None
     last_contact_sync: Optional[datetime] = None
 
 class RecentContact(SQLModel, table=True):
@@ -26,7 +27,7 @@ class GoogleContact(SQLModel, table=True):
     __table_args__ = {"extend_existing": True}
     id: Optional[int] = Field(default=None, primary_key=True)
     account_id: int = Field(foreign_key="account.id")
-    resource_name: str = Field(unique=True)
+    resource_name: str
     email: str
     name: Optional[str] = None
     photo_url: Optional[str] = None

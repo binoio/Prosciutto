@@ -238,8 +238,9 @@ async def auth_callback(request: Request, code: str, state: str, background_task
     session.add(account)
     session.commit()
     
-    # Trigger warm-up sync for recent contacts
+    # Trigger warm-up sync for recent contacts and google contacts
     background_tasks.add_task(sync_recent_contacts_warmup, account.id)
+    background_tasks.add_task(sync_google_contacts, account.id)
     
     # Redirect to frontend
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:8000")
@@ -250,16 +251,16 @@ async def list_accounts(session: Session = Depends(get_session)):
     accounts = session.exec(select(Account)).all()
     return [{"id": a.id, "email": a.email, "is_active": a.is_active} for a in accounts]
 
-def get_gmail_service(account_id: int, session: Session):
+def get_google_credentials(account_id: int, session: Session):
     account = session.get(Account, account_id)
     if not account:
         logger.error(f"Account {account_id} not found in database")
         return None
-    
+
     try:
         creds_dict = json.loads(account.credentials_json)
         creds = Credentials.from_authorized_user_info(creds_dict, SCOPES)
-        
+
         # Check if creds need refresh
         if creds and creds.expired and creds.refresh_token:
             from google.auth.transport.requests import Request as GoogleRequest
@@ -268,12 +269,23 @@ def get_gmail_service(account_id: int, session: Session):
             account.credentials_json = creds.to_json()
             session.add(account)
             session.commit()
-        
-        return build("gmail", "v1", credentials=creds)
+
+        return creds
     except Exception as e:
-        logger.error(f"Failed to build Gmail service for account {account_id}: {str(e)}")
+        logger.error(f"Failed to get Google credentials for account {account_id}: {str(e)}")
         return None
 
+def get_gmail_service(account_id: int, session: Session):
+    creds = get_google_credentials(account_id, session)
+    if not creds:
+        return None
+    return build("gmail", "v1", credentials=creds)
+
+def get_people_service(account_id: int, session: Session):
+    creds = get_google_credentials(account_id, session)
+    if not creds:
+        return None
+    return build("people", "v1", credentials=creds)
 from email.utils import getaddresses
 from datetime import timedelta
 from sqlalchemy import desc
@@ -324,6 +336,166 @@ async def update_recent_contact(account_id: int, email: str, name: Optional[str]
             session.delete(extra)
         session.commit()
 
+async def sync_google_contacts(account_id: int):
+    # Sync both connections and other contacts
+    from sqlmodel import Session
+    from backend.db import engine
+    with Session(engine) as session:
+        account = session.get(Account, account_id)
+        if not account: return
+        
+        service = get_people_service(account_id, session)
+        if not service: return
+
+        # 1. Sync Connections
+        try:
+            sync_token = account.sync_token
+            next_page_token = None
+            while True:
+                kwargs = {
+                    "resourceName": "people/me",
+                    "personFields": "names,emailAddresses,metadata,photos,memberships",
+                    "pageSize": 1000,
+                    "requestSyncToken": True
+                }
+                if sync_token:
+                    kwargs["syncToken"] = sync_token
+                if next_page_token:
+                    kwargs["pageToken"] = next_page_token
+                
+                results = service.people().connections().list(**kwargs).execute()
+                connections = results.get("connections", [])
+                
+                for person in connections:
+                    res_name = person.get("resourceName")
+                    metadata = person.get("metadata", {})
+                    if metadata.get("deleted"):
+                        existing = session.exec(
+                            select(GoogleContact)
+                            .where(GoogleContact.account_id == account_id)
+                            .where(GoogleContact.resource_name == res_name)
+                        ).all()
+                        for c in existing: session.delete(c)
+                    else:
+                        name = person.get("names", [{}])[0].get("displayName") if person.get("names") else None
+                        photo_url = person.get("photos", [{}])[0].get("url") if person.get("photos") else None
+                        is_starred = False
+                        if person.get("memberships"):
+                            for m in person["memberships"]:
+                                if m.get("contactGroupMembership", {}).get("contactGroupResourceName") == "contactGroups/starred":
+                                    is_starred = True
+                                    break
+                        
+                        emails = person.get("emailAddresses", [])
+                        if not emails: continue
+                        
+                        # Delete old entries for this resource
+                        existing = session.exec(
+                            select(GoogleContact)
+                            .where(GoogleContact.account_id == account_id)
+                            .where(GoogleContact.resource_name == res_name)
+                        ).all()
+                        for c in existing: session.delete(c)
+                        
+                        for e in emails:
+                            email_addr = e.get("value")
+                            if email_addr:
+                                new_contact = GoogleContact(
+                                    account_id=account_id,
+                                    resource_name=res_name,
+                                    email=email_addr,
+                                    name=name,
+                                    photo_url=photo_url,
+                                    is_starred=is_starred
+                                )
+                                session.add(new_contact)
+                
+                next_sync_token = results.get("nextSyncToken")
+                next_page_token = results.get("nextPageToken")
+                
+                if not next_page_token:
+                    account.sync_token = next_sync_token
+                    session.add(account)
+                    session.commit()
+                    break
+        except Exception as e:
+            logger.error(f"Error syncing connections for {account_id}: {e}")
+            if "expired" in str(e).lower():
+                account.sync_token = None
+                session.add(account)
+                session.commit()
+
+        # 2. Sync Other Contacts
+        try:
+            other_sync_token = account.other_sync_token
+            next_page_token = None
+            while True:
+                kwargs = {
+                    "pageSize": 1000,
+                    "readMask": "names,emailAddresses,metadata,photos",
+                    "requestSyncToken": True
+                }
+                if other_sync_token:
+                    kwargs["syncToken"] = other_sync_token
+                if next_page_token:
+                    kwargs["pageToken"] = next_page_token
+                
+                results = service.otherContacts().list(**kwargs).execute()
+                other_contacts = results.get("otherContacts", [])
+                
+                for person in other_contacts:
+                    res_name = person.get("resourceName")
+                    metadata = person.get("metadata", {})
+                    if metadata.get("deleted"):
+                        existing = session.exec(
+                            select(GoogleContact)
+                            .where(GoogleContact.account_id == account_id)
+                            .where(GoogleContact.resource_name == res_name)
+                        ).all()
+                        for c in existing: session.delete(c)
+                    else:
+                        name = person.get("names", [{}])[0].get("displayName") if person.get("names") else None
+                        photo_url = person.get("photos", [{}])[0].get("url") if person.get("photos") else None
+                        
+                        emails = person.get("emailAddresses", [])
+                        if not emails: continue
+                        
+                        # Delete old entries for this resource
+                        existing = session.exec(
+                            select(GoogleContact)
+                            .where(GoogleContact.account_id == account_id)
+                            .where(GoogleContact.resource_name == res_name)
+                        ).all()
+                        for c in existing: session.delete(c)
+                        
+                        for e in emails:
+                            email_addr = e.get("value")
+                            if email_addr:
+                                new_contact = GoogleContact(
+                                    account_id=account_id,
+                                    resource_name=res_name,
+                                    email=email_addr,
+                                    name=name,
+                                    photo_url=photo_url,
+                                    is_starred=False
+                                )
+                                session.add(new_contact)
+                
+                next_sync_token = results.get("nextSyncToken")
+                next_page_token = results.get("nextPageToken")
+                
+                if not next_page_token:
+                    account.other_sync_token = next_sync_token
+                    account.last_contact_sync = datetime.utcnow()
+                    session.add(account)
+                    session.commit()
+                    break
+        except Exception as e:
+            logger.error(f"Error syncing other contacts for {account_id}: {e}")
+            if "expired" in str(e).lower():
+                account.other_sync_token = None
+                session.add(account)
+                session.commit()
 async def sync_recent_contacts_warmup(account_id: int):
     # Create a new session since the one from Depends(get_session) will be closed
     from sqlmodel import Session
