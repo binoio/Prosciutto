@@ -246,14 +246,9 @@
 
                     <!-- Contacts Tab -->
                     <div id="tab-contacts" class="tab-panel">
-                        <div style="background-color: #fff3cd; color: #856404; padding: 15px; border-radius: 4px; border: 1px solid #ffeeba; margin-bottom: 20px; font-size: 14px;">
-                            <i class="fa-solid fa-person-digging" style="margin-right: 10px;"></i>
-                            Under Construction: These settings will be functional in a future update.
-                        </div>
-                        
                         <h4>Recent Activity</h4>
                         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
-                            <input type="checkbox" id="setting-autocomplete-recents" style="width: auto;" disabled>
+                            <input type="checkbox" id="setting-autocomplete-recents" style="width: auto;" onchange="saveAllSettings()">
                             <label for="setting-autocomplete-recents" style="color: var(--text-gray);">Auto-complete from Recents</label>
                         </div>
 
@@ -261,6 +256,10 @@
                         <div id="contacts-accounts-list" style="margin-top: 10px;">
                             <!-- Account toggles will be rendered here -->
                         </div>
+
+                        <h4 style="margin-top: 25px;">Maintenance</h4>
+                        <p style="font-size: 13px; color: var(--text-gray); margin-bottom: 10px;">If your contacts are out of sync or you want to free up space, you can clear the local cache. Contacts will be re-synced from Google on next refresh.</p>
+                        <button class="remove-btn" style="background-color: var(--text-gray);" onclick="clearLocalContacts()">Clear Local Contact Cache</button>
                     </div>
 
                     <!-- Advanced Tab -->
@@ -275,6 +274,22 @@
                             <input type="password" id="client-secret" placeholder="Client Secret" onchange="saveAllSettings()">
                         </div>
                         <div id="credentials-feedback" style="margin-bottom: 20px; font-size: 13px;"></div>
+
+                        <div style="background-color: var(--bg-light-gray); padding: 15px; border-radius: 4px; margin-bottom: 20px; font-size: 13px;">
+                            <p style="margin-bottom: 5px;"><b>Status:</b> <span id="stats-status" style="color: green;">Connected</span></p>
+                            <p>To enable permanent deletion in Trash/Spam folders, set <code>ENABLE_DELETION_SCOPE=true</code> in your <code>.env</code> file.</p>
+                        </div>
+
+                        <h4>System Statistics</h4>
+                        <div id="system-stats" style="font-size: 13px; color: var(--text-gray); display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: var(--bg-white); border: 1px solid var(--border-gray); padding: 15px; border-radius: 4px;">
+                            <div>Connected Accounts:</div> <div id="stat-accounts" style="color: var(--text-black);">-</div>
+                            <div>Recent Interactions:</div> <div id="stat-recents" style="color: var(--text-black);">-</div>
+                            <div>Google Contacts:</div> <div id="stat-contacts" style="color: var(--text-black);">-</div>
+                            <div>Database Size:</div> <div id="stat-db-size" style="color: var(--text-black);">-</div>
+                            <div>Message Cache Size:</div> <div id="stat-cache-size" style="color: var(--text-black);">-</div>
+                            <div>Full Deletion Scope:</div> <div id="stat-deletion" style="color: var(--text-black);">-</div>
+                        </div>
+                        <button class="remove-btn" style="margin-top: 10px; background-color: var(--text-gray); width: auto; padding: 8px 15px;" onclick="loadStats()">Refresh Statistics</button>
                     </div>
                 </div>
             </div>
@@ -400,7 +415,11 @@
             document.getElementById('setting-starred').checked = globalSettings.SHOW_STARRED === 'true';
             document.getElementById('setting-collapse-sidebar').checked = globalSettings.ALWAYS_COLLAPSE_SIDEBAR === 'true';
 
-            // Populate Privacy Settings            document.getElementById('setting-remote-images').checked = globalSettings.LOAD_REMOTE_IMAGES === 'true';
+            // Populate Contacts Settings
+            document.getElementById('setting-autocomplete-recents').checked = globalSettings.AUTOCOMPLETE_RECENTS === 'true';
+
+            // Populate Privacy Settings
+            document.getElementById('setting-remote-images').checked = globalSettings.LOAD_REMOTE_IMAGES === 'true';
             
             applyTheme(globalSettings.THEME);
             updateStarredMailboxVisibility();
@@ -416,6 +435,13 @@
             const composeHtml = document.getElementById('setting-compose-html').checked;
             const markReadAuto = document.getElementById('setting-mark-read').checked;
             const warnDelete = document.getElementById('setting-warn-delete').checked;
+            
+            const autocompleteRecents = document.getElementById('setting-autocomplete-recents').checked;
+            const autocompleteEnabledAccounts = Array.from(document.querySelectorAll('.contact-account-toggle'))
+                .filter(cb => cb.checked)
+                .map(cb => cb.dataset.accid)
+                .join(',');
+
             const clientId = document.getElementById('client-id').value;
             const clientSecret = document.getElementById('client-secret').value;
 
@@ -428,7 +454,9 @@
                 COMPOSE_NEW_WINDOW: composeWindow ? 'true' : 'false',
                 COMPOSE_AS_HTML: composeHtml ? 'true' : 'false',
                 MARK_READ_AUTOMATICALLY: markReadAuto ? 'true' : 'false',
-                WARN_BEFORE_DELETE: warnDelete ? 'true' : 'false'
+                WARN_BEFORE_DELETE: warnDelete ? 'true' : 'false',
+                AUTOCOMPLETE_RECENTS: autocompleteRecents ? 'true' : 'false',
+                AUTOCOMPLETE_ENABLED_ACCOUNTS: autocompleteEnabledAccounts
             };
             // Only include credentials if they are not disabled (not from env)
             if (!document.getElementById('client-id').disabled) {
@@ -454,6 +482,8 @@
             globalSettings.COMPOSE_NEW_WINDOW = data.COMPOSE_NEW_WINDOW;
             globalSettings.COMPOSE_AS_HTML = data.COMPOSE_AS_HTML;
             globalSettings.MARK_READ_AUTOMATICALLY = data.MARK_READ_AUTOMATICALLY;
+            globalSettings.AUTOCOMPLETE_RECENTS = data.AUTOCOMPLETE_RECENTS;
+            globalSettings.AUTOCOMPLETE_ENABLED_ACCOUNTS = data.AUTOCOMPLETE_ENABLED_ACCOUNTS;
 
             updateDisclosureTriangles();
             updateStarredMailboxVisibility();
@@ -633,7 +663,11 @@
             const list = document.getElementById('contacts-accounts-list');
             if (!list) return;
             list.innerHTML = '';
+            
+            const enabledIds = (globalSettings.AUTOCOMPLETE_ENABLED_ACCOUNTS || "").split(",").filter(id => id.trim());
+            
             accounts.forEach(acc => {
+                const isChecked = enabledIds.includes(acc.id.toString());
                 const row = document.createElement('div');
                 row.style.display = 'flex';
                 row.style.justifyContent = 'space-between';
@@ -642,7 +676,7 @@
                 row.style.borderBottom = '1px solid var(--border-gray)';
                 row.innerHTML = `
                     <span style="font-size: 14px;">${acc.email}</span>
-                    <input type="checkbox" style="width: auto;" disabled>
+                    <input type="checkbox" class="contact-account-toggle" data-accid="${acc.id}" style="width: auto;" ${isChecked ? 'checked' : ''} onchange="saveAllSettings()">
                 `;
                 list.appendChild(row);
             });
@@ -672,10 +706,62 @@
             loadSettings();
             renderAccountsInSettings();
             renderContactsAccounts();
+            loadStats();
         }
         function closeSettings() {
             saveAllSettings();
             document.getElementById('settings-modal').style.display = 'none';
+        }
+
+        async function clearLocalContacts() {
+            if (!confirm("Are you sure you want to clear all locally cached contacts and recents? This will force a full re-sync from Google.")) return;
+            
+            try {
+                const res = await fetch('/contacts/clear', { method: 'POST' });
+                if (res.ok) {
+                    alert("Local contact cache cleared successfully.");
+                    loadStats();
+                } else {
+                    alert("Failed to clear contact cache.");
+                }
+            } catch (err) {
+                console.error(err);
+                alert("An error occurred while clearing the cache.");
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const res = await fetch('/stats');
+                const data = await res.json();
+                
+                if (data.error) {
+                    document.getElementById('stats-status').innerText = 'Error';
+                    document.getElementById('stats-status').style.color = 'red';
+                    return;
+                }
+
+                document.getElementById('stats-status').innerText = 'Connected';
+                document.getElementById('stats-status').style.color = 'green';
+                
+                document.getElementById('stat-accounts').innerText = data.accounts;
+                document.getElementById('stat-recents').innerText = data.recent_contacts;
+                document.getElementById('stat-contacts').innerText = data.google_contacts;
+                document.getElementById('stat-db-size').innerText = formatBytes(data.db_size_bytes);
+                document.getElementById('stat-cache-size').innerText = formatBytes(data.cache_size_bytes);
+                document.getElementById('stat-deletion').innerText = data.deletion_scope_enabled ? 'Yes' : 'No (Modify only)';
+            } catch (err) {
+                console.error("Failed to load stats", err);
+            }
+        }
+
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
         }
 
         function switchTab(tab) {
@@ -1992,8 +2078,17 @@
         }
 
         async function fetchAutocomplete(q, input) {
+            const includeRecents = globalSettings.AUTOCOMPLETE_RECENTS !== 'false';
+            const enabledAccounts = globalSettings.AUTOCOMPLETE_ENABLED_ACCOUNTS || "";
+            
+            if (!includeRecents && !enabledAccounts) {
+                closeAutocomplete();
+                return;
+            }
+
             try {
-                const res = await fetch(`/autocomplete?q=${encodeURIComponent(q)}`);
+                const url = `/autocomplete?q=${encodeURIComponent(q)}&include_recents=${includeRecents}&account_ids=${enabledAccounts}`;
+                const res = await fetch(url);
                 const results = await res.json();
                 
                 if (results.length === 0) {

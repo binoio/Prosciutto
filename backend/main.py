@@ -1,42 +1,55 @@
 import base64
 import logging
-from fastapi import FastAPI, Depends, Request, HTTPException, BackgroundTasks
-from typing import Optional, List
-from fastapi.responses import RedirectResponse, JSONResponse
-from datetime import datetime, timedelta
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
-from contextlib import asynccontextmanager
+import secrets
 import os
 import json
 import httpx
 import urllib.parse
+from contextlib import asynccontextmanager
+from typing import Optional, List
+from datetime import datetime, timedelta
+from email.utils import getaddresses
+
+from fastapi import FastAPI, Depends, Request, HTTPException, BackgroundTasks
+from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
 from email.mime.text import MIMEText
 from pydantic import BaseModel
-
-# Load .env file if it exists
-load_dotenv()
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from sqlmodel import Session, select, delete
-from backend.db import create_db_and_tables, get_session
-from backend.models import Account, Setting, RecentContact, GoogleContact
+from sqlalchemy import desc
 from diskcache import Cache
+
+from backend.db import create_db_and_tables, get_session, engine
+from backend.models import Account, Setting, RecentContact, GoogleContact
 
 # Initialize Limiter
 limiter = Limiter(key_func=get_remote_address)
 
 # Initialize Cache
 cache = Cache(".cache_dir")
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Load .env file
+# Try loading from the root or from the backend directory
+load_dotenv() 
+if not os.getenv("GOOGLE_CLIENT_ID"):
+    # Try relative to this file
+    dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path)
 
 # Define Scopes
 def get_requested_scopes():
@@ -52,7 +65,7 @@ def get_requested_scopes():
     ]
     # Default-deny the app's use of or requests for the messages.delete or messages.batchDelete scope
     # unless .env exists and contains a ENABLE_DELETION_SCOPE=true.
-    if os.path.exists(".env") and os.getenv("ENABLE_DELETION_SCOPE") == "true":
+    if os.getenv("ENABLE_DELETION_SCOPE") == "true":
         scopes.append("https://mail.google.com/")
     else:
         scopes.append("https://www.googleapis.com/auth/gmail.modify")
@@ -118,6 +131,8 @@ async def get_settings(session: Session = Depends(get_session)):
         "COMPOSE_NEW_WINDOW": settings_dict.get("COMPOSE_NEW_WINDOW", "true"),
         "WARN_BEFORE_DELETE": settings_dict.get("WARN_BEFORE_DELETE", "true"),
         "MARK_READ_AUTOMATICALLY": settings_dict.get("MARK_READ_AUTOMATICALLY", "true"),
+        "AUTOCOMPLETE_RECENTS": settings_dict.get("AUTOCOMPLETE_RECENTS", "true"),
+        "AUTOCOMPLETE_ENABLED_ACCOUNTS": settings_dict.get("AUTOCOMPLETE_ENABLED_ACCOUNTS", ""),
         "CAN_PERMANENTLY_DELETE": "https://mail.google.com/" in SCOPES
     }
 
@@ -137,6 +152,58 @@ async def update_settings(settings: dict, session: Session = Depends(get_session
     session.commit()
     return {"message": "Settings updated"}
 
+@app.get("/stats")
+async def get_stats(session: Session = Depends(get_session)):
+    try:
+        # Accounts
+        account_count = session.exec(select(Account)).all()
+        
+        # Contacts
+        recent_count = session.exec(select(RecentContact)).all()
+        google_contact_count = session.exec(select(GoogleContact)).all()
+        
+        # Database size
+        db_size = 0
+        if os.path.exists("prosciutto.db"):
+            db_size = os.path.getsize("prosciutto.db")
+            
+        # Cache stats
+        cache_dir_size = 0
+        if os.path.exists(".cache_dir"):
+            for root, dirs, files in os.walk(".cache_dir"):
+                for f in files:
+                    cache_dir_size += os.path.getsize(os.path.join(root, f))
+
+        return {
+            "accounts": len(account_count),
+            "recent_contacts": len(recent_count),
+            "google_contacts": len(google_contact_count),
+            "db_size_bytes": db_size,
+            "cache_size_bytes": cache_dir_size,
+            "deletion_scope_enabled": "https://mail.google.com/" in SCOPES
+        }
+    except Exception as e:
+        logger.error(f"Error gathering stats: {e}")
+        return {"error": str(e)}
+
+@app.post("/contacts/clear")
+async def clear_contacts(session: Session = Depends(get_session)):
+    try:
+        session.exec(delete(RecentContact))
+        session.exec(delete(GoogleContact))
+        # Also clear sync tokens so they re-sync from scratch next time
+        accounts = session.exec(select(Account)).all()
+        for acc in accounts:
+            acc.sync_token = None
+            acc.other_sync_token = None
+            acc.last_contact_sync = None
+            session.add(acc)
+        session.commit()
+        return {"message": "Local contacts and recents cleared"}
+    except Exception as e:
+        logger.error(f"Error clearing contacts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.delete("/accounts/{account_id}")
 async def delete_account(account_id: int, session: Session = Depends(get_session)):
     account = session.get(Account, account_id)
@@ -146,9 +213,6 @@ async def delete_account(account_id: int, session: Session = Depends(get_session
     session.commit()
     return {"message": "Account deleted"}
 
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 @app.get("/")
@@ -157,8 +221,6 @@ async def root(request: Request):
     return FileResponse(os.path.join(BASE_DIR, "../frontend/index.html"))
 
 app.mount("/styles", StaticFiles(directory=os.path.join(BASE_DIR, "../frontend/styles")), name="styles")
-
-import secrets
 
 @app.get("/auth/login")
 async def login(request: Request):
@@ -184,9 +246,6 @@ async def login(request: Request):
     
     auth_url = f"{client_config['web']['auth_uri']}?{urllib.parse.urlencode(params)}"
     return RedirectResponse(auth_url)
-
-from fastapi import Request, Depends, HTTPException, BackgroundTasks
-from fastapi.responses import RedirectResponse, JSONResponse
 
 @app.get("/auth/callback")
 async def auth_callback(request: Request, code: str, state: str, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
@@ -286,9 +345,6 @@ def get_people_service(account_id: int, session: Session):
     if not creds:
         return None
     return build("people", "v1", credentials=creds)
-from email.utils import getaddresses
-from datetime import timedelta
-from sqlalchemy import desc
 
 def extract_contacts(address_str: str) -> List[dict]:
     if not address_str:
@@ -347,8 +403,6 @@ async def update_recent_contact(account_id: int, email: str, name: Optional[str]
 
 async def sync_google_contacts(account_id: int):
     # Sync both connections and other contacts
-    from sqlmodel import Session
-    from backend.db import engine
     with Session(engine) as session:
         account = session.get(Account, account_id)
         if not account: return
@@ -507,8 +561,6 @@ async def sync_google_contacts(account_id: int):
                 session.commit()
 async def sync_recent_contacts_warmup(account_id: int):
     # Create a new session since the one from Depends(get_session) will be closed
-    from sqlmodel import Session
-    from backend.db import engine
     with Session(engine) as session:
         service = get_gmail_service(account_id, session)
         if not service:
@@ -615,12 +667,18 @@ def get_detailed_messages_batch(service, messages_meta, format="metadata", metad
         # Include all requested metadata headers
         if metadata_headers:
             for header_name in metadata_headers:
-                msg_data[header_name.lower()] = get_header(headers, header_name)
+                msg_data[header_name] = get_header(headers, header_name)
+                # Keep lowercase version for backwards compatibility/internal logic if needed
+                msg_data[header_name.lower()] = msg_data[header_name]
         else:
             # Default headers if none specified
             msg_data["subject"] = get_header(headers, "Subject")
             msg_data["from"] = get_header(headers, "From")
             msg_data["date"] = get_header(headers, "Date")
+            # Also provide title-case for frontend consistency if default
+            msg_data["Subject"] = msg_data["subject"]
+            msg_data["From"] = msg_data["from"]
+            msg_data["Date"] = msg_data["date"]
             
         detailed_messages_dict[request_id] = msg_data
         logger.debug(f"Message {response['id']} labels: {detailed_messages_dict[request_id]['labelIds']}")
@@ -685,7 +743,7 @@ async def create_label(account_id: int, request: CreateLabelRequest, session: Se
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/autocomplete")
-async def autocomplete(q: str, account_ids: str = None, session: Session = Depends(get_session)):
+async def autocomplete(q: str, account_ids: str = None, include_recents: bool = True, session: Session = Depends(get_session)):
     if not q or len(q) < 1:
         return []
     
@@ -696,79 +754,91 @@ async def autocomplete(q: str, account_ids: str = None, session: Session = Depen
         except:
             pass
     
-    if not ids:
-        accounts = session.exec(select(Account).where(Account.is_active == True)).all()
-        ids = [a.id for a in accounts]
+    # If no ids provided, search across all active accounts? 
+    # Or should it be empty if none provided?
+    # Spec says "The frontend should merge results from all 'checked' accounts in the settings".
+    # So if none are checked, ids will be empty.
     
-    if not ids:
-        return []
-        
     results = []
     
     # 1. Search Recents (Priority 1)
-    recents = session.exec(
-        select(RecentContact)
-        .where(RecentContact.account_id.in_(ids))
-        .where(
-            (RecentContact.email.ilike(f"%{q}%")) | 
-            (RecentContact.name.ilike(f"%{q}%"))
-        )
-        .order_by(desc(RecentContact.last_interacted))
-        .limit(50)
-    ).all()
-    
-    for r in recents:
-        results.append({
-            "email": r.email,
-            "name": r.name,
-            "type": "recent",
-            "priority": 1,
-            "account_id": r.account_id
-        })
-    
-    # 2. Search Google Contacts Starred (Priority 2)
-    starred = session.exec(
-        select(GoogleContact)
-        .where(GoogleContact.account_id.in_(ids))
-        .where(GoogleContact.is_starred == True)
-        .where(
-            (GoogleContact.email.ilike(f"%{q}%")) | 
-            (GoogleContact.name.ilike(f"%{q}%"))
-        )
-        .limit(50)
-    ).all()
-    
-    for c in starred:
-        results.append({
-            "email": c.email,
-            "name": c.name,
-            "photo_url": c.photo_url,
-            "type": "starred",
-            "priority": 2,
-            "account_id": c.account_id
-        })
+    if include_recents:
+        # Search recents across all active accounts or only checked ones?
+        # Typically recents should be for all accounts the user is using.
+        # But let's limit it to checked accounts if ids is provided, 
+        # or all active if ids is empty (backwards compat).
+        recent_ids = ids if ids else [a.id for a in session.exec(select(Account).where(Account.is_active == True)).all()]
         
-    # 3. Search Google Contacts General (Priority 3)
-    others = session.exec(
-        select(GoogleContact)
-        .where(GoogleContact.account_id.in_(ids))
-        .where(GoogleContact.is_starred == False)
-        .where(
-            (GoogleContact.email.ilike(f"%{q}%")) | 
-            (GoogleContact.name.ilike(f"%{q}%"))
-        )
-        .limit(50)
-    ).all()
+        if recent_ids:
+            recents = session.exec(
+                select(RecentContact)
+                .where(RecentContact.account_id.in_(recent_ids))
+                .where(
+                    (RecentContact.email.ilike(f"%{q}%")) | 
+                    (RecentContact.name.ilike(f"%{q}%"))
+                )
+                .order_by(desc(RecentContact.last_interacted))
+                .limit(50)
+            ).all()
+            
+            for r in recents:
+                results.append({
+                    "email": r.email,
+                    "name": r.name,
+                    "type": "recent",
+                    "priority": 1,
+                    "account_id": r.account_id
+                })
     
-    for c in others:
-        results.append({
-            "email": c.email,
-            "name": c.name,
-            "photo_url": c.photo_url,
-            "type": "contact",
-            "priority": 3,
-            "account_id": c.account_id
-        })
+    if not ids:
+        # If no account contacts are enabled, we might still have recents.
+        # If we reached here and ids is empty, and include_recents was false,
+        # or if we just want to return what we have (recents).
+        pass
+    else:
+        # 2. Search Google Contacts Starred (Priority 2)
+        starred = session.exec(
+            select(GoogleContact)
+            .where(GoogleContact.account_id.in_(ids))
+            .where(GoogleContact.is_starred == True)
+            .where(
+                (GoogleContact.email.ilike(f"%{q}%")) | 
+                (GoogleContact.name.ilike(f"%{q}%"))
+            )
+            .limit(50)
+        ).all()
+        
+        for c in starred:
+            results.append({
+                "email": c.email,
+                "name": c.name,
+                "photo_url": c.photo_url,
+                "type": "starred",
+                "priority": 2,
+                "account_id": c.account_id
+            })
+            
+        # 3. Search Google Contacts General (Priority 3)
+        others = session.exec(
+            select(GoogleContact)
+            .where(GoogleContact.account_id.in_(ids))
+            .where(GoogleContact.is_starred == False)
+            .where(
+                (GoogleContact.email.ilike(f"%{q}%")) | 
+                (GoogleContact.name.ilike(f"%{q}%"))
+            )
+            .limit(50)
+        ).all()
+        
+        for c in others:
+            results.append({
+                "email": c.email,
+                "name": c.name,
+                "photo_url": c.photo_url,
+                "type": "contact",
+                "priority": 3,
+                "account_id": c.account_id
+            })
 
     # Deduplicate and rank
     unique_results = {}

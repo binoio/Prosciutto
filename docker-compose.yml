@@ -6,12 +6,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app/backend
-      - ./frontend:/app/frontend
-      - backend-data:/data
+      - .:/app
     environment:
-      - DATABASE_URL=sqlite:////data/prosciutto.db
+      - DATABASE_URL=sqlite:///./prosciutto.db
     # restart: always
-
-volumes:
-  backend-data:
