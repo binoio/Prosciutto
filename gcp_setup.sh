@@ -33,8 +33,8 @@ function check_gcloud() {
 function configure_local_env() {
     echo -e "\n${BLUE}--- Local OAuth Configuration ---${NC}"
     echo "Choose application type:"
-    echo "1) Web application (Client ID + Secret)"
-    echo "2) Desktop app (Client ID only)"
+    echo "1) Web application (Client ID + Secret) - Recommended for most uses."
+    echo "2) Desktop app (Client ID only) - Use for local single-user docker/dev only."
     read -p "Type (1/2, default 1): " APP_TYPE_CHOICE
     
     if [ "$APP_TYPE_CHOICE" == "2" ]; then
@@ -78,9 +78,9 @@ function create_project() {
     
     echo -e "${YELLOW}Important:${NC} You MUST create OAuth2 credentials manually in the console:"
     echo "https://console.cloud.google.com/apis/credentials?project=$PROJECT_ID"
-    echo "1. Create 'OAuth client ID'."
-    echo "2. Select 'Web application' (requires secret) OR 'Desktop app' (no secret needed)."
-    echo "3. Add Authorized Redirect URI: http://localhost:8000/auth/callback"
+    echo "1. Click 'Create Credentials' -> 'OAuth client ID'."
+    echo "2. Select 'Web application' (standard) OR 'Desktop app' (local single-user only)."
+    echo "3. For BOTH types, use redirect URI: http://localhost:8000/auth/callback"
 
     read -p "Do you want to configure your local .env file now? (y/n): " configure_now
     if [ "$configure_now" == "y" ]; then
@@ -124,6 +124,14 @@ function toggle_email_contact_apis() {
 }
 
 function deploy_stack() {
+    # Warn if using desktop mode
+    if grep -q "OAUTH_APP_TYPE=desktop" backend/.env 2>/dev/null; then
+        echo -e "${YELLOW}Warning: Current configuration is 'desktop' mode.${NC}"
+        echo -e "${YELLOW}Cloud Run deployments typically require 'web' application type.${NC}"
+        read -p "Continue anyway? (y/n): " confirm_deploy
+        if [ "$confirm_deploy" != "y" ]; then return; fi
+    fi
+
     read -p "Enter Service Name (default: prosciutto): " SERVICE_NAME
     SERVICE_NAME=${SERVICE_NAME:-prosciutto}
     read -p "Enter Region (default: us-central1): " REGION
