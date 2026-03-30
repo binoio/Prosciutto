@@ -27,7 +27,7 @@ from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from sqlmodel import Session, select
+from sqlmodel import Session, select, delete
 from backend.db import create_db_and_tables, get_session
 from backend.models import Account, Setting, RecentContact, GoogleContact
 from diskcache import Cache
@@ -324,6 +324,15 @@ async def update_recent_contact(account_id: int, email: str, name: Optional[str]
     
     session.commit()
     
+    # Purge entries older than 90 days
+    ninety_days_ago = datetime.utcnow() - timedelta(days=90)
+    session.exec(
+        delete(RecentContact)
+        .where(RecentContact.account_id == account_id)
+        .where(RecentContact.last_interacted < ninety_days_ago)
+    )
+    session.commit()
+    
     # Enforce limit of 100 unique recipients per account
     recents = session.exec(
         select(RecentContact)
@@ -551,6 +560,15 @@ async def sync_recent_contacts_warmup(account_id: int):
                                 )
                                 session.add(new_recent)
             
+            session.commit()
+            
+            # Purge entries older than 90 days
+            ninety_days_ago = datetime.utcnow() - timedelta(days=90)
+            session.exec(
+                delete(RecentContact)
+                .where(RecentContact.account_id == account_id)
+                .where(RecentContact.last_interacted < ninety_days_ago)
+            )
             session.commit()
             
             # Final cleanup to keep only top 100

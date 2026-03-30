@@ -492,6 +492,11 @@
             updateDisclosureTriangles();
             renderAccountsInSettings();
             await loadLabels();
+            
+            // Trigger contact sync for each account (delta sync)
+            accounts.forEach(acc => {
+                fetch(`/accounts/${acc.id}/sync-contacts`);
+            });
 
             // Hide mailbox list and compose button if no accounts
             const mailboxList = document.getElementById('mailbox-list');
