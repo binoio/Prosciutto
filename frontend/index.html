@@ -170,22 +170,12 @@
                     <div class="modal-tab" onclick="switchTab('appearance')" data-tab="appearance">Appearance</div>
                     <div class="modal-tab" onclick="switchTab('privacy')" data-tab="privacy">Privacy</div>
                     <div class="modal-tab" onclick="switchTab('contacts')" data-tab="contacts">Contacts</div>
+                    <div class="modal-tab" onclick="switchTab('advanced')" data-tab="advanced">Advanced</div>
                 </div>
                 <div class="modal-content">
                     <!-- General Tab -->
                     <div id="tab-general" class="tab-panel active">
-                        <h4>Google API Configuration</h4>
-                        <div class="form-group">
-                            <label>Google Client ID <span id="client-id-env-badge" class="env-badge" style="display:none">Set via .env</span></label>
-                            <input type="text" id="client-id" placeholder="Client ID" onchange="saveAllSettings()">
-                        </div>
-                        <div class="form-group">
-                            <label>Google Client Secret <span id="client-secret-env-badge" class="env-badge" style="display:none">Set via .env</span></label>
-                            <input type="password" id="client-secret" placeholder="Client Secret" onchange="saveAllSettings()">
-                        </div>
-                        <div id="credentials-feedback" style="margin-bottom: 20px; font-size: 13px;"></div>
-                        
-                        <h4 style="margin-top: 30px;">Behavior</h4>
+                        <h4>Behavior</h4>
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <input type="checkbox" id="setting-compose-window" style="width: auto;" onchange="saveAllSettings()">
                             <label for="setting-compose-window">Compose new messages in their own window</label>
@@ -271,6 +261,20 @@
                         <div id="contacts-accounts-list" style="margin-top: 10px;">
                             <!-- Account toggles will be rendered here -->
                         </div>
+                    </div>
+
+                    <!-- Advanced Tab -->
+                    <div id="tab-advanced" class="tab-panel">
+                        <h4>Google API Configuration</h4>
+                        <div class="form-group">
+                            <label>Google Client ID <span id="client-id-env-badge" class="env-badge" style="display:none">Set via .env</span></label>
+                            <input type="text" id="client-id" placeholder="Client ID" onchange="saveAllSettings()">
+                        </div>
+                        <div class="form-group">
+                            <label>Google Client Secret <span id="client-secret-env-badge" class="env-badge" style="display:none">Set via .env</span></label>
+                            <input type="password" id="client-secret" placeholder="Client Secret" onchange="saveAllSettings()">
+                        </div>
+                        <div id="credentials-feedback" style="margin-bottom: 20px; font-size: 13px;"></div>
                     </div>
                 </div>
             </div>
@@ -1513,6 +1517,10 @@
             const textArea = document.getElementById('panel-compose-body');
             textArea.focus();
             textArea.setSelectionRange(0, 0);
+
+            setupAutocomplete('panel-compose-to');
+            setupAutocomplete('panel-compose-cc');
+            setupAutocomplete('panel-compose-bcc');
         }
 
         async function sendEmailFromPanel(event, accId) {
@@ -1863,7 +1871,11 @@
                 select.appendChild(opt);
             });
 
-            document.getElementById('panel-compose-to').focus();
+            document.getElementById('panel-compose-from').focus(); // wait, this is for renderNewComposer?
+            // Actually I should add it at the end of both functions
+            setupAutocomplete('panel-compose-to');
+            setupAutocomplete('panel-compose-cc');
+            setupAutocomplete('panel-compose-bcc');
         }
 
         function showComposer() {
@@ -1909,6 +1921,138 @@
                 event.stopPropagation();
                 toggleSidebarCollapse();
             }
+        }
+
+        let autocompleteTimeout = null;
+
+        function setupAutocomplete(inputId) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+
+            input.addEventListener('input', () => {
+                clearTimeout(autocompleteTimeout);
+                const val = input.value;
+                const lastComma = val.lastIndexOf(',');
+                const q = (lastComma === -1 ? val : val.substring(lastComma + 1)).trim();
+                
+                if (q.length < 1) {
+                    closeAutocomplete();
+                    return;
+                }
+
+                autocompleteTimeout = setTimeout(() => {
+                    fetchAutocomplete(q, input);
+                }, 200);
+            });
+
+            input.addEventListener('keydown', (e) => {
+                const dropdown = document.getElementById('autocomplete-dropdown');
+                if (!dropdown) return;
+
+                const items = dropdown.querySelectorAll('.autocomplete-item');
+                let selectedIndex = Array.from(items).findIndex(item => item.classList.contains('selected'));
+
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (selectedIndex < items.length - 1) {
+                        if (selectedIndex >= 0) items[selectedIndex].classList.remove('selected');
+                        items[selectedIndex + 1].classList.add('selected');
+                        items[selectedIndex + 1].scrollIntoView({ block: 'nearest' });
+                    }
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (selectedIndex > 0) {
+                        items[selectedIndex].classList.remove('selected');
+                        items[selectedIndex - 1].classList.add('selected');
+                        items[selectedIndex - 1].scrollIntoView({ block: 'nearest' });
+                    }
+                } else if (e.key === 'Enter' || e.key === 'Tab') {
+                    const selected = dropdown.querySelector('.autocomplete-item.selected');
+                    if (selected) {
+                        e.preventDefault();
+                        selectAutocompleteItem(selected.dataset.email, selected.dataset.name, input);
+                    }
+                } else if (e.key === 'Escape') {
+                    closeAutocomplete();
+                }
+            });
+
+            // Close when clicking outside
+            document.addEventListener('click', (e) => {
+                const dropdown = document.getElementById('autocomplete-dropdown');
+                if (dropdown && !dropdown.contains(e.target) && e.target !== input) {
+                    closeAutocomplete();
+                }
+            });
+        }
+
+        async function fetchAutocomplete(q, input) {
+            try {
+                const res = await fetch(`/autocomplete?q=${encodeURIComponent(q)}`);
+                const results = await res.json();
+                
+                if (results.length === 0) {
+                    closeAutocomplete();
+                    return;
+                }
+
+                showAutocompleteDropdown(results, input);
+            } catch (e) {
+                console.error("Autocomplete fetch failed", e);
+            }
+        }
+
+        function showAutocompleteDropdown(results, input) {
+            closeAutocomplete();
+            
+            const rect = input.getBoundingClientRect();
+            const dropdown = document.createElement('div');
+            dropdown.id = 'autocomplete-dropdown';
+            dropdown.className = 'autocomplete-dropdown';
+            dropdown.style.top = `${rect.bottom + window.scrollY}px`;
+            dropdown.style.left = `${rect.left + window.scrollX}px`;
+            dropdown.style.width = `${rect.width}px`;
+
+            results.forEach((r, index) => {
+                const item = document.createElement('div');
+                item.className = 'autocomplete-item' + (index === 0 ? ' selected' : '');
+                item.dataset.email = r.email;
+                item.dataset.name = r.name || '';
+                
+                const avatar = r.photo_url 
+                    ? `<img src="${r.photo_url}" alt="">`
+                    : `<i class="fa-solid fa-user"></i>`;
+                    
+                item.innerHTML = `
+                    <div class="avatar">${avatar}</div>
+                    <div class="info">
+                        <div class="name">${r.name || r.email}</div>
+                        <div class="email">${r.email}</div>
+                    </div>
+                    <div class="type-badge ${r.type}">${r.type}</div>
+                `;
+                
+                item.onclick = () => selectAutocompleteItem(r.email, r.name, input);
+                dropdown.appendChild(item);
+            });
+
+            document.body.appendChild(dropdown);
+        }
+
+        function selectAutocompleteItem(email, name, input) {
+            const val = input.value;
+            const lastComma = val.lastIndexOf(',');
+            const base = lastComma === -1 ? '' : val.substring(0, lastComma + 1).trim() + ' ';
+            
+            const formatted = name ? `"${name}" <${email}>` : email;
+            input.value = base + formatted + ', ';
+            input.focus();
+            closeAutocomplete();
+        }
+
+        function closeAutocomplete() {
+            const dropdown = document.getElementById('autocomplete-dropdown');
+            if (dropdown) dropdown.remove();
         }
 
         init();
