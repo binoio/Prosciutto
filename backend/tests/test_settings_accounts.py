@@ -63,6 +63,24 @@ def test_update_compose_window_setting(client: TestClient, session: Session):
     response = client.get("/settings")
     assert response.json()["COMPOSE_NEW_WINDOW"] == "false"
 
+def test_update_collapse_sidebar_setting(client: TestClient, session: Session):
+    # Verify default
+    response = client.get("/settings")
+    assert response.json()["ALWAYS_COLLAPSE_SIDEBAR"] == "false"
+    
+    # Update
+    response = client.post("/settings", json={"ALWAYS_COLLAPSE_SIDEBAR": "true"})
+    assert response.status_code == 200
+    
+    # Verify DB
+    from backend.models import Setting
+    setting = session.query(Setting).filter(Setting.key == "ALWAYS_COLLAPSE_SIDEBAR").first()
+    assert setting.value == "true"
+    
+    # Verify GET
+    response = client.get("/settings")
+    assert response.json()["ALWAYS_COLLAPSE_SIDEBAR"] == "true"
+
 def test_get_settings_with_env(client: TestClient, session: Session):
     # Mock os.getenv
     def mock_getenv(key, default=None):

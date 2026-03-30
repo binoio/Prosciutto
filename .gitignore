@@ -12,3 +12,4 @@ backend/.cache_dir/
 ralph.yml
 PROMPT.md
 __pycache__/
+.cache_dir/

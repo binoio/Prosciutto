@@ -1,41 +1,55 @@
 import base64
 import logging
-from fastapi import FastAPI, Depends, Request, HTTPException
-from typing import Optional
-from fastapi.responses import RedirectResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
-from contextlib import asynccontextmanager
+import secrets
 import os
 import json
 import httpx
 import urllib.parse
+from contextlib import asynccontextmanager
+from typing import Optional, List
+from datetime import datetime, timedelta
+from email.utils import getaddresses
+
+from fastapi import FastAPI, Depends, Request, HTTPException, BackgroundTasks
+from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
 from email.mime.text import MIMEText
 from pydantic import BaseModel
-
-# Load .env file if it exists
-load_dotenv()
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from sqlmodel import Session, select
-from backend.db import create_db_and_tables, get_session
-from backend.models import Account, Setting
+from sqlmodel import Session, select, delete
+from sqlalchemy import desc
 from diskcache import Cache
+
+from backend.db import create_db_and_tables, get_session, engine
+from backend.models import Account, Setting, RecentContact, GoogleContact
 
 # Initialize Limiter
 limiter = Limiter(key_func=get_remote_address)
 
 # Initialize Cache
 cache = Cache(".cache_dir")
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Load .env file
+# Try loading from the root or from the backend directory
+load_dotenv() 
+if not os.getenv("GOOGLE_CLIENT_ID"):
+    # Try relative to this file
+    dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path)
 
 # Define Scopes
 def get_requested_scopes():
@@ -44,11 +58,14 @@ def get_requested_scopes():
         "https://www.googleapis.com/auth/gmail.compose",
         "https://www.googleapis.com/auth/gmail.send",
         "https://www.googleapis.com/auth/userinfo.email",
-        "openid"
+        "openid",
+        "https://www.googleapis.com/auth/contacts.readonly",
+        "https://www.googleapis.com/auth/contacts.other.readonly",
+        "https://www.googleapis.com/auth/userinfo.profile"
     ]
     # Default-deny the app's use of or requests for the messages.delete or messages.batchDelete scope
     # unless .env exists and contains a ENABLE_DELETION_SCOPE=true.
-    if os.path.exists(".env") and os.getenv("ENABLE_DELETION_SCOPE") == "true":
+    if os.getenv("ENABLE_DELETION_SCOPE") == "true":
         scopes.append("https://mail.google.com/")
     else:
         scopes.append("https://www.googleapis.com/auth/gmail.modify")
@@ -110,8 +127,12 @@ async def get_settings(session: Session = Depends(get_session)):
         "THEME": settings_dict.get("THEME", "automatic"),
         "SHOW_DISCLOSURE_IF_SINGLE": settings_dict.get("SHOW_DISCLOSURE_IF_SINGLE", "false"),
         "SHOW_STARRED": settings_dict.get("SHOW_STARRED", "false"),
+        "ALWAYS_COLLAPSE_SIDEBAR": settings_dict.get("ALWAYS_COLLAPSE_SIDEBAR", "false"),
         "COMPOSE_NEW_WINDOW": settings_dict.get("COMPOSE_NEW_WINDOW", "true"),
         "WARN_BEFORE_DELETE": settings_dict.get("WARN_BEFORE_DELETE", "true"),
+        "MARK_READ_AUTOMATICALLY": settings_dict.get("MARK_READ_AUTOMATICALLY", "true"),
+        "AUTOCOMPLETE_RECENTS": settings_dict.get("AUTOCOMPLETE_RECENTS", "true"),
+        "AUTOCOMPLETE_ENABLED_ACCOUNTS": settings_dict.get("AUTOCOMPLETE_ENABLED_ACCOUNTS", ""),
         "CAN_PERMANENTLY_DELETE": "https://mail.google.com/" in SCOPES
     }
 
@@ -131,6 +152,58 @@ async def update_settings(settings: dict, session: Session = Depends(get_session
     session.commit()
     return {"message": "Settings updated"}
 
+@app.get("/stats")
+async def get_stats(session: Session = Depends(get_session)):
+    try:
+        # Accounts
+        account_count = session.exec(select(Account)).all()
+        
+        # Contacts
+        recent_count = session.exec(select(RecentContact)).all()
+        google_contact_count = session.exec(select(GoogleContact)).all()
+        
+        # Database size
+        db_size = 0
+        if os.path.exists("prosciutto.db"):
+            db_size = os.path.getsize("prosciutto.db")
+            
+        # Cache stats
+        cache_dir_size = 0
+        if os.path.exists(".cache_dir"):
+            for root, dirs, files in os.walk(".cache_dir"):
+                for f in files:
+                    cache_dir_size += os.path.getsize(os.path.join(root, f))
+
+        return {
+            "accounts": len(account_count),
+            "recent_contacts": len(recent_count),
+            "google_contacts": len(google_contact_count),
+            "db_size_bytes": db_size,
+            "cache_size_bytes": cache_dir_size,
+            "deletion_scope_enabled": "https://mail.google.com/" in SCOPES
+        }
+    except Exception as e:
+        logger.error(f"Error gathering stats: {e}")
+        return {"error": str(e)}
+
+@app.post("/contacts/clear")
+async def clear_contacts(session: Session = Depends(get_session)):
+    try:
+        session.exec(delete(RecentContact))
+        session.exec(delete(GoogleContact))
+        # Also clear sync tokens so they re-sync from scratch next time
+        accounts = session.exec(select(Account)).all()
+        for acc in accounts:
+            acc.sync_token = None
+            acc.other_sync_token = None
+            acc.last_contact_sync = None
+            session.add(acc)
+        session.commit()
+        return {"message": "Local contacts and recents cleared"}
+    except Exception as e:
+        logger.error(f"Error clearing contacts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.delete("/accounts/{account_id}")
 async def delete_account(account_id: int, session: Session = Depends(get_session)):
     account = session.get(Account, account_id)
@@ -140,9 +213,6 @@ async def delete_account(account_id: int, session: Session = Depends(get_session
     session.commit()
     return {"message": "Account deleted"}
 
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 @app.get("/")
@@ -151,8 +221,6 @@ async def root(request: Request):
     return FileResponse(os.path.join(BASE_DIR, "../frontend/index.html"))
 
 app.mount("/styles", StaticFiles(directory=os.path.join(BASE_DIR, "../frontend/styles")), name="styles")
-
-import secrets
 
 @app.get("/auth/login")
 async def login(request: Request):
@@ -180,7 +248,7 @@ async def login(request: Request):
     return RedirectResponse(auth_url)
 
 @app.get("/auth/callback")
-async def auth_callback(request: Request, code: str, state: str, session: Session = Depends(get_session)):
+async def auth_callback(request: Request, code: str, state: str, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
     client_config = get_client_config()
     redirect_uri = str(request.url_for("auth_callback"))
     if os.getenv("FORCE_HTTPS"):
@@ -229,23 +297,29 @@ async def auth_callback(request: Request, code: str, state: str, session: Sessio
     session.add(account)
     session.commit()
     
-    return {"message": f"Account {email} added successfully"}
+    # Trigger warm-up sync for recent contacts and google contacts
+    background_tasks.add_task(sync_recent_contacts_warmup, account.id)
+    background_tasks.add_task(sync_google_contacts, account.id)
+    
+    # Redirect to frontend
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:8000")
+    return RedirectResponse(frontend_url)
 
 @app.get("/accounts")
 async def list_accounts(session: Session = Depends(get_session)):
     accounts = session.exec(select(Account)).all()
     return [{"id": a.id, "email": a.email, "is_active": a.is_active} for a in accounts]
 
-def get_gmail_service(account_id: int, session: Session):
+def get_google_credentials(account_id: int, session: Session):
     account = session.get(Account, account_id)
     if not account:
         logger.error(f"Account {account_id} not found in database")
         return None
-    
+
     try:
         creds_dict = json.loads(account.credentials_json)
         creds = Credentials.from_authorized_user_info(creds_dict, SCOPES)
-        
+
         # Check if creds need refresh
         if creds and creds.expired and creds.refresh_token:
             from google.auth.transport.requests import Request as GoogleRequest
@@ -254,11 +328,315 @@ def get_gmail_service(account_id: int, session: Session):
             account.credentials_json = creds.to_json()
             session.add(account)
             session.commit()
-        
-        return build("gmail", "v1", credentials=creds)
+
+        return creds
     except Exception as e:
-        logger.error(f"Failed to build Gmail service for account {account_id}: {str(e)}")
+        logger.error(f"Failed to get Google credentials for account {account_id}: {str(e)}")
         return None
+
+def get_gmail_service(account_id: int, session: Session):
+    creds = get_google_credentials(account_id, session)
+    if not creds:
+        return None
+    return build("gmail", "v1", credentials=creds)
+
+def get_people_service(account_id: int, session: Session):
+    creds = get_google_credentials(account_id, session)
+    if not creds:
+        return None
+    return build("people", "v1", credentials=creds)
+
+def extract_contacts(address_str: str) -> List[dict]:
+    if not address_str:
+        return []
+    contacts = []
+    # getaddresses takes a list of strings
+    for name, email_addr in getaddresses([address_str]):
+        if email_addr:
+            contacts.append({"name": name, "email": email_addr})
+    return contacts
+
+async def update_recent_contact(account_id: int, email: str, name: Optional[str], session: Session):
+    # Check if exists
+    existing = session.exec(
+        select(RecentContact)
+        .where(RecentContact.account_id == account_id)
+        .where(RecentContact.email == email)
+    ).first()
+    
+    if existing:
+        existing.last_interacted = datetime.utcnow()
+        if name and not existing.name:
+            existing.name = name
+        session.add(existing)
+    else:
+        new_recent = RecentContact(
+            account_id=account_id,
+            email=email,
+            name=name,
+            last_interacted=datetime.utcnow()
+        )
+        session.add(new_recent)
+    
+    session.commit()
+    
+    # Purge entries older than 90 days
+    ninety_days_ago = datetime.utcnow() - timedelta(days=90)
+    session.exec(
+        delete(RecentContact)
+        .where(RecentContact.account_id == account_id)
+        .where(RecentContact.last_interacted < ninety_days_ago)
+    )
+    session.commit()
+    
+    # Enforce limit of 100 unique recipients per account
+    recents = session.exec(
+        select(RecentContact)
+        .where(RecentContact.account_id == account_id)
+        .order_by(desc(RecentContact.last_interacted))
+    ).all()
+    
+    if len(recents) > 100:
+        for extra in recents[100:]:
+            session.delete(extra)
+        session.commit()
+
+async def sync_google_contacts(account_id: int):
+    # Sync both connections and other contacts
+    with Session(engine) as session:
+        account = session.get(Account, account_id)
+        if not account: return
+        
+        service = get_people_service(account_id, session)
+        if not service: return
+
+        # 1. Sync Connections
+        try:
+            sync_token = account.sync_token
+            next_page_token = None
+            while True:
+                kwargs = {
+                    "resourceName": "people/me",
+                    "personFields": "names,emailAddresses,metadata,photos,memberships",
+                    "pageSize": 1000,
+                    "requestSyncToken": True
+                }
+                if sync_token:
+                    kwargs["syncToken"] = sync_token
+                if next_page_token:
+                    kwargs["pageToken"] = next_page_token
+                
+                results = service.people().connections().list(**kwargs).execute()
+                connections = results.get("connections", [])
+                
+                for person in connections:
+                    res_name = person.get("resourceName")
+                    metadata = person.get("metadata", {})
+                    if metadata.get("deleted"):
+                        existing = session.exec(
+                            select(GoogleContact)
+                            .where(GoogleContact.account_id == account_id)
+                            .where(GoogleContact.resource_name == res_name)
+                        ).all()
+                        for c in existing: session.delete(c)
+                    else:
+                        name = person.get("names", [{}])[0].get("displayName") if person.get("names") else None
+                        photo_url = person.get("photos", [{}])[0].get("url") if person.get("photos") else None
+                        is_starred = False
+                        if person.get("memberships"):
+                            for m in person["memberships"]:
+                                if m.get("contactGroupMembership", {}).get("contactGroupResourceName") == "contactGroups/starred":
+                                    is_starred = True
+                                    break
+                        
+                        emails = person.get("emailAddresses", [])
+                        if not emails: continue
+                        
+                        # Delete old entries for this resource
+                        existing = session.exec(
+                            select(GoogleContact)
+                            .where(GoogleContact.account_id == account_id)
+                            .where(GoogleContact.resource_name == res_name)
+                        ).all()
+                        for c in existing: session.delete(c)
+                        
+                        for e in emails:
+                            email_addr = e.get("value")
+                            if email_addr:
+                                new_contact = GoogleContact(
+                                    account_id=account_id,
+                                    resource_name=res_name,
+                                    email=email_addr,
+                                    name=name,
+                                    photo_url=photo_url,
+                                    is_starred=is_starred
+                                )
+                                session.add(new_contact)
+                
+                next_sync_token = results.get("nextSyncToken")
+                next_page_token = results.get("nextPageToken")
+                
+                if not next_page_token:
+                    account.sync_token = next_sync_token
+                    session.add(account)
+                    session.commit()
+                    break
+        except Exception as e:
+            logger.error(f"Error syncing connections for {account_id}: {e}")
+            if "expired" in str(e).lower():
+                account.sync_token = None
+                session.add(account)
+                session.commit()
+
+        # 2. Sync Other Contacts
+        try:
+            other_sync_token = account.other_sync_token
+            next_page_token = None
+            while True:
+                kwargs = {
+                    "pageSize": 1000,
+                    "readMask": "names,emailAddresses,metadata,photos",
+                    "requestSyncToken": True
+                }
+                if other_sync_token:
+                    kwargs["syncToken"] = other_sync_token
+                if next_page_token:
+                    kwargs["pageToken"] = next_page_token
+                
+                results = service.otherContacts().list(**kwargs).execute()
+                other_contacts = results.get("otherContacts", [])
+                
+                for person in other_contacts:
+                    res_name = person.get("resourceName")
+                    metadata = person.get("metadata", {})
+                    if metadata.get("deleted"):
+                        existing = session.exec(
+                            select(GoogleContact)
+                            .where(GoogleContact.account_id == account_id)
+                            .where(GoogleContact.resource_name == res_name)
+                        ).all()
+                        for c in existing: session.delete(c)
+                    else:
+                        name = person.get("names", [{}])[0].get("displayName") if person.get("names") else None
+                        photo_url = person.get("photos", [{}])[0].get("url") if person.get("photos") else None
+                        
+                        emails = person.get("emailAddresses", [])
+                        if not emails: continue
+                        
+                        # Delete old entries for this resource
+                        existing = session.exec(
+                            select(GoogleContact)
+                            .where(GoogleContact.account_id == account_id)
+                            .where(GoogleContact.resource_name == res_name)
+                        ).all()
+                        for c in existing: session.delete(c)
+                        
+                        for e in emails:
+                            email_addr = e.get("value")
+                            if email_addr:
+                                new_contact = GoogleContact(
+                                    account_id=account_id,
+                                    resource_name=res_name,
+                                    email=email_addr,
+                                    name=name,
+                                    photo_url=photo_url,
+                                    is_starred=False
+                                )
+                                session.add(new_contact)
+                
+                next_sync_token = results.get("nextSyncToken")
+                next_page_token = results.get("nextPageToken")
+                
+                if not next_page_token:
+                    account.other_sync_token = next_sync_token
+                    account.last_contact_sync = datetime.utcnow()
+                    session.add(account)
+                    session.commit()
+                    break
+        except Exception as e:
+            logger.error(f"Error syncing other contacts for {account_id}: {e}")
+            if "expired" in str(e).lower():
+                account.other_sync_token = None
+                session.add(account)
+                session.commit()
+async def sync_recent_contacts_warmup(account_id: int):
+    # Create a new session since the one from Depends(get_session) will be closed
+    with Session(engine) as session:
+        service = get_gmail_service(account_id, session)
+        if not service:
+            return
+        
+        thirty_days_ago = (datetime.utcnow() - timedelta(days=30)).strftime("%Y/%m/%d")
+        query = f"in:sent after:{thirty_days_ago}"
+        
+        try:
+            results = service.users().messages().list(userId="me", q=query, maxResults=500).execute()
+            messages_meta = results.get("messages", [])
+            
+            if not messages_meta:
+                return
+
+            detailed_messages = get_detailed_messages_batch(
+                service, 
+                messages_meta, 
+                format="metadata", 
+                metadata_headers=["To", "Cc", "Bcc"]
+            )
+            
+            for msg in detailed_messages:
+                # internalDate is in ms
+                msg_date = datetime.fromtimestamp(msg["internalDate"] / 1000.0)
+                
+                for header in ["to", "cc", "bcc"]:
+                    val = msg.get(header)
+                    if val:
+                        for contact in extract_contacts(val):
+                            existing = session.exec(
+                                select(RecentContact)
+                                .where(RecentContact.account_id == account_id)
+                                .where(RecentContact.email == contact["email"])
+                            ).first()
+                            
+                            if existing:
+                                if msg_date > existing.last_interacted:
+                                    existing.last_interacted = msg_date
+                                if contact["name"] and not existing.name:
+                                    existing.name = contact["name"]
+                                session.add(existing)
+                            else:
+                                new_recent = RecentContact(
+                                    account_id=account_id,
+                                    email=contact["email"],
+                                    name=contact["name"],
+                                    last_interacted=msg_date
+                                )
+                                session.add(new_recent)
+            
+            session.commit()
+            
+            # Purge entries older than 90 days
+            ninety_days_ago = datetime.utcnow() - timedelta(days=90)
+            session.exec(
+                delete(RecentContact)
+                .where(RecentContact.account_id == account_id)
+                .where(RecentContact.last_interacted < ninety_days_ago)
+            )
+            session.commit()
+            
+            # Final cleanup to keep only top 100
+            recents = session.exec(
+                select(RecentContact)
+                .where(RecentContact.account_id == account_id)
+                .order_by(desc(RecentContact.last_interacted))
+            ).all()
+            
+            if len(recents) > 100:
+                for extra in recents[100:]:
+                    session.delete(extra)
+                session.commit()
+                
+        except Exception as e:
+            logger.error(f"Error during recent contacts warm-up for account {account_id}: {e}")
 
 def get_header(headers, name):
     for header in headers:
@@ -278,15 +656,32 @@ def get_detailed_messages_batch(service, messages_meta, format="metadata", metad
             return
         
         headers = response.get("payload", {}).get("headers", [])
-        detailed_messages_dict[request_id] = {
+        msg_data = {
             "id": response["id"],
             "snippet": response.get("snippet", ""),
             "threadId": response.get("threadId", ""),
+            "labelIds": response.get("labelIds") or [],
             "internalDate": int(response.get("internalDate", 0)),
-            "subject": get_header(headers, "Subject"),
-            "from": get_header(headers, "From"),
-            "date": get_header(headers, "Date")
         }
+        
+        # Include all requested metadata headers
+        if metadata_headers:
+            for header_name in metadata_headers:
+                msg_data[header_name] = get_header(headers, header_name)
+                # Keep lowercase version for backwards compatibility/internal logic if needed
+                msg_data[header_name.lower()] = msg_data[header_name]
+        else:
+            # Default headers if none specified
+            msg_data["subject"] = get_header(headers, "Subject")
+            msg_data["from"] = get_header(headers, "From")
+            msg_data["date"] = get_header(headers, "Date")
+            # Also provide title-case for frontend consistency if default
+            msg_data["Subject"] = msg_data["subject"]
+            msg_data["From"] = msg_data["from"]
+            msg_data["Date"] = msg_data["date"]
+            
+        detailed_messages_dict[request_id] = msg_data
+        logger.debug(f"Message {response['id']} labels: {detailed_messages_dict[request_id]['labelIds']}")
 
     batch = service.new_batch_http_request(callback=callback)
     
@@ -346,6 +741,124 @@ async def create_label(account_id: int, request: CreateLabelRequest, session: Se
     except Exception as e:
         logger.error(f"Error creating label: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/autocomplete")
+async def autocomplete(q: str, account_ids: str = None, include_recents: bool = True, session: Session = Depends(get_session)):
+    if not q or len(q) < 1:
+        return []
+    
+    ids = []
+    if account_ids:
+        try:
+            ids = [int(i) for i in account_ids.split(",") if i.strip()]
+        except:
+            pass
+    
+    # If no ids provided, search across all active accounts? 
+    # Or should it be empty if none provided?
+    # Spec says "The frontend should merge results from all 'checked' accounts in the settings".
+    # So if none are checked, ids will be empty.
+    
+    results = []
+    
+    # 1. Search Recents (Priority 1)
+    if include_recents:
+        # Search recents across all active accounts or only checked ones?
+        # Typically recents should be for all accounts the user is using.
+        # But let's limit it to checked accounts if ids is provided, 
+        # or all active if ids is empty (backwards compat).
+        recent_ids = ids if ids else [a.id for a in session.exec(select(Account).where(Account.is_active == True)).all()]
+        
+        if recent_ids:
+            recents = session.exec(
+                select(RecentContact)
+                .where(RecentContact.account_id.in_(recent_ids))
+                .where(
+                    (RecentContact.email.ilike(f"%{q}%")) | 
+                    (RecentContact.name.ilike(f"%{q}%"))
+                )
+                .order_by(desc(RecentContact.last_interacted))
+                .limit(50)
+            ).all()
+            
+            for r in recents:
+                results.append({
+                    "email": r.email,
+                    "name": r.name,
+                    "type": "recent",
+                    "priority": 1,
+                    "account_id": r.account_id
+                })
+    
+    if not ids:
+        # If no account contacts are enabled, we might still have recents.
+        # If we reached here and ids is empty, and include_recents was false,
+        # or if we just want to return what we have (recents).
+        pass
+    else:
+        # 2. Search Google Contacts Starred (Priority 2)
+        starred = session.exec(
+            select(GoogleContact)
+            .where(GoogleContact.account_id.in_(ids))
+            .where(GoogleContact.is_starred == True)
+            .where(
+                (GoogleContact.email.ilike(f"%{q}%")) | 
+                (GoogleContact.name.ilike(f"%{q}%"))
+            )
+            .limit(50)
+        ).all()
+        
+        for c in starred:
+            results.append({
+                "email": c.email,
+                "name": c.name,
+                "photo_url": c.photo_url,
+                "type": "starred",
+                "priority": 2,
+                "account_id": c.account_id
+            })
+            
+        # 3. Search Google Contacts General (Priority 3)
+        others = session.exec(
+            select(GoogleContact)
+            .where(GoogleContact.account_id.in_(ids))
+            .where(GoogleContact.is_starred == False)
+            .where(
+                (GoogleContact.email.ilike(f"%{q}%")) | 
+                (GoogleContact.name.ilike(f"%{q}%"))
+            )
+            .limit(50)
+        ).all()
+        
+        for c in others:
+            results.append({
+                "email": c.email,
+                "name": c.name,
+                "photo_url": c.photo_url,
+                "type": "contact",
+                "priority": 3,
+                "account_id": c.account_id
+            })
+
+    # Deduplicate and rank
+    unique_results = {}
+    for r in results:
+        email = r["email"].lower()
+        if email not in unique_results or r["priority"] < unique_results[email]["priority"]:
+            unique_results[email] = r
+            
+    sorted_results = sorted(unique_results.values(), key=lambda x: (x["priority"], x["name"] or x["email"]))
+    
+    return sorted_results[:20]
+
+@app.get("/accounts/{account_id}/sync-contacts")
+async def trigger_contact_sync(account_id: int, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+    account = session.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    background_tasks.add_task(sync_google_contacts, account_id)
+    return {"message": "Contact sync started in background"}
 
 @app.get("/accounts/{account_id}/messages")
 async def list_messages(account_id: int, label: str = None, page_token: str = None, refresh: bool = False, session: Session = Depends(get_session)):
@@ -440,19 +953,6 @@ async def get_message(account_id: int, message_id: str, session: Session = Depen
     try:
         msg = service.users().messages().get(userId="me", id=message_id).execute()
         
-        # If the message is unread, mark it as read
-        if "UNREAD" in msg.get("labelIds", []):
-            try:
-                service.users().messages().modify(
-                    userId="me", 
-                    id=message_id, 
-                    body={"removeLabelIds": ["UNREAD"]}
-                ).execute()
-                # Clear cache so the unread state is updated in the list
-                cache.clear()
-            except Exception as e:
-                logger.warning(f"Failed to mark message {message_id} as read: {str(e)}")
-
         headers = msg.get("payload", {}).get("headers", [])
         subject = get_header(headers, "Subject")
         from_email = get_header(headers, "From")
@@ -463,6 +963,7 @@ async def get_message(account_id: int, message_id: str, session: Session = Depen
         references_header = get_header(headers, "References")
         snippet = msg.get("snippet", "")
         thread_id = msg.get("threadId", "")
+        label_ids = msg.get("labelIds", [])
         
         # Comprehensive body extraction (text/plain and text/html)
         text_body = ""
@@ -512,6 +1013,7 @@ async def get_message(account_id: int, message_id: str, session: Session = Depen
             "body": text_body,
             "html_body": html_body,
             "snippet": snippet,
+            "labelIds": label_ids,
             "internalDate": int(msg.get("internalDate", 0))
         }
     except Exception as e:
@@ -647,6 +1149,12 @@ async def send_email(account_id: int, request: SendEmailRequest, session: Sessio
             body=body
         ).execute()
         
+        # Update recent contacts
+        for addr in [request.to, request.cc, request.bcc]:
+            if addr:
+                for contact in extract_contacts(addr):
+                    await update_recent_contact(account_id, contact["email"], contact["name"], session)
+        
         return {"message": "Email sent", "result": send_result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -699,8 +1207,8 @@ async def empty_label(account_id: int, label_id: str, session: Session = Depends
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/unified/messages")
-async def unified_messages(label: str = None, refresh: bool = False, session: Session = Depends(get_session)):
-    cache_key = f"unified_messages_{label}"
+async def unified_messages(label: str = None, page_token: str = None, refresh: bool = False, session: Session = Depends(get_session)):
+    cache_key = f"unified_messages_{label}_{page_token}"
     if not refresh:
         cached_result = cache.get(cache_key)
         if cached_result:
@@ -709,20 +1217,40 @@ async def unified_messages(label: str = None, refresh: bool = False, session: Se
     accounts = session.exec(select(Account).where(Account.is_active)).all()
     
     all_messages = []
-    import asyncio
+    
+    # Decode page_token if provided (it's a base64-encoded JSON mapping account_id -> individual token)
+    tokens = {}
+    if page_token:
+        try:
+            tokens = json.loads(base64.urlsafe_b64decode(page_token).decode("utf-8"))
+        except Exception:
+            tokens = {}
+            
+    new_tokens = {}
     
     # We could use asyncio to fetch in parallel
     for account in accounts:
         try:
+            acc_id_str = str(account.id)
+            # If we have a page_token but this account has no more pages, skip it
+            if page_token and acc_id_str not in tokens:
+                continue
+                
             service = get_gmail_service(account.id, session)
             if not service: continue
             
-            kwargs = {"userId": "me", "maxResults": 10}
+            kwargs = {"userId": "me", "maxResults": 50}
             if label:
                 kwargs["labelIds"] = [label]
+            if acc_id_str in tokens:
+                kwargs["pageToken"] = tokens[acc_id_str]
 
             results = service.users().messages().list(**kwargs).execute()
             messages_meta = results.get("messages", [])
+            
+            # Capture the next token for this account if it exists
+            if results.get("nextPageToken"):
+                new_tokens[acc_id_str] = results["nextPageToken"]
             
             detailed_messages = get_detailed_messages_batch(service, messages_meta, format="metadata", metadata_headers=["Subject", "From", "Date"])
             
@@ -734,9 +1262,89 @@ async def unified_messages(label: str = None, refresh: bool = False, session: Se
             # For unified view, we might want to just skip failed accounts or log them
             continue
     
+    # Encode new tokens into a single base64 string for the frontend
+    next_page_token_str = None
+    if new_tokens:
+        next_page_token_str = base64.urlsafe_b64encode(json.dumps(new_tokens).encode("utf-8")).decode("utf-8")
+        
     # Sort by date descending
     all_messages.sort(key=lambda x: x["internalDate"], reverse=True)
-    response_data = {"messages": all_messages, "nextPageToken": None}
+    response_data = {"messages": all_messages, "nextPageToken": next_page_token_str}
+    cache.set(cache_key, response_data, expire=300)
+    return response_data
+
+@app.get("/unified/search")
+async def unified_search(
+    q: str = None, 
+    page_token: str = None, 
+    max_results: int = 20, 
+    session: Session = Depends(get_session)
+):
+    cache_key = f"unified_search_{q}_{page_token}_{max_results}"
+    cached_result = cache.get(cache_key)
+    if cached_result:
+        return cached_result
+
+    accounts = session.exec(select(Account).where(Account.is_active)).all()
+    all_messages = []
+    
+    # Decode page_token if provided (it's a base64-encoded JSON mapping account_id -> individual token)
+    tokens = {}
+    if page_token:
+        try:
+            tokens = json.loads(base64.urlsafe_b64decode(page_token).decode("utf-8"))
+        except Exception:
+            tokens = {}
+            
+    new_tokens = {}
+    
+    for account in accounts:
+        try:
+            acc_id_str = str(account.id)
+            if page_token and acc_id_str not in tokens:
+                continue
+                
+            service = get_gmail_service(account.id, session)
+            if not service: continue
+            
+            kwargs = {
+                "userId": "me", 
+                "maxResults": max_results,
+                "fields": "messages(id,threadId),nextPageToken"
+            }
+            if q:
+                kwargs["q"] = q
+            if acc_id_str in tokens:
+                kwargs["pageToken"] = tokens[acc_id_str]
+
+            results = service.users().messages().list(**kwargs).execute()
+            messages_meta = results.get("messages", [])
+            
+            if results.get("nextPageToken"):
+                new_tokens[acc_id_str] = results["nextPageToken"]
+            
+            detailed_messages = get_detailed_messages_batch(
+                service, 
+                messages_meta, 
+                format="metadata", 
+                metadata_headers=["Subject", "From", "Date"]
+            )
+            
+            for m in detailed_messages:
+                m["accountEmail"] = account.email
+                m["accountId"] = account.id
+                all_messages.append(m)
+        except Exception:
+            continue
+    
+    # Encode new tokens into a single base64 string for the frontend
+    next_page_token_str = None
+    if new_tokens:
+        next_page_token_str = base64.urlsafe_b64encode(json.dumps(new_tokens).encode("utf-8")).decode("utf-8")
+        
+    # Sort by date descending
+    all_messages.sort(key=lambda x: x["internalDate"], reverse=True)
+    response_data = {"messages": all_messages, "nextPageToken": next_page_token_str}
     cache.set(cache_key, response_data, expire=300)
     return response_data
 

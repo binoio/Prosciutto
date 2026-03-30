@@ -71,6 +71,40 @@
                 <div style="position: relative; flex: 1;">
                     <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 15px; top: 12px; color: var(--text-gray);"></i>
                     <input type="text" id="search-input" placeholder="Search mail" onkeydown="if(event.key === 'Enter') performSearch()">
+                    <i class="fa-solid fa-sliders" id="advanced-search-toggle" onclick="toggleAdvancedSearch(event)" style="position: absolute; right: 15px; top: 12px; color: var(--text-gray); cursor: pointer;" title="Show search options"></i>
+                    
+                    <div id="advanced-search-dropdown" class="advanced-search-dropdown" onclick="event.stopPropagation()">
+                        <div class="advanced-search-form">
+                            <div class="form-row">
+                                <label>From</label>
+                                <input type="text" id="adv-from">
+                            </div>
+                            <div class="form-row">
+                                <label>Subject</label>
+                                <input type="text" id="adv-subject">
+                            </div>
+                            <div class="form-row">
+                                <label>Has words</label>
+                                <input type="text" id="adv-body">
+                            </div>
+                            <div class="form-row">
+                                <label>Date Range</label>
+                                <div style="display: flex; gap: 5px; align-items: center; flex: 1;">
+                                    <input type="date" id="adv-date-after" style="flex: 1;">
+                                    <span style="font-size: 12px; color: var(--text-gray);">to</span>
+                                    <input type="date" id="adv-date-before" style="flex: 1;">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <label>Has attachment</label>
+                                <input type="checkbox" id="adv-has-attachment">
+                            </div>
+                            <div class="form-actions">
+                                <button class="action-btn" onclick="clearAdvancedSearch()" style="border-radius: 4px; padding: 8px 15px;">Clear</button>
+                                <button class="compose-btn" style="width: auto; padding: 8px 25px; border-radius: 4px;" onclick="performAdvancedSearch()">Search</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div id="settings-trigger" onclick="openSettings()"><i class="fa-solid fa-gear"></i></div>
@@ -135,22 +169,13 @@
                     <div class="modal-tab" onclick="switchTab('accounts')" data-tab="accounts">Accounts</div>
                     <div class="modal-tab" onclick="switchTab('appearance')" data-tab="appearance">Appearance</div>
                     <div class="modal-tab" onclick="switchTab('privacy')" data-tab="privacy">Privacy</div>
+                    <div class="modal-tab" onclick="switchTab('contacts')" data-tab="contacts">Contacts</div>
+                    <div class="modal-tab" onclick="switchTab('advanced')" data-tab="advanced">Advanced</div>
                 </div>
                 <div class="modal-content">
                     <!-- General Tab -->
                     <div id="tab-general" class="tab-panel active">
-                        <h4>Google API Configuration</h4>
-                        <div class="form-group">
-                            <label>Google Client ID <span id="client-id-env-badge" class="env-badge" style="display:none">Set via .env</span></label>
-                            <input type="text" id="client-id" placeholder="Client ID" onchange="saveAllSettings()">
-                        </div>
-                        <div class="form-group">
-                            <label>Google Client Secret <span id="client-secret-env-badge" class="env-badge" style="display:none">Set via .env</span></label>
-                            <input type="password" id="client-secret" placeholder="Client Secret" onchange="saveAllSettings()">
-                        </div>
-                        <div id="credentials-feedback" style="margin-bottom: 20px; font-size: 13px;"></div>
-                        
-                        <h4 style="margin-top: 30px;">Behavior</h4>
+                        <h4>Behavior</h4>
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <input type="checkbox" id="setting-compose-window" style="width: auto;" onchange="saveAllSettings()">
                             <label for="setting-compose-window">Compose new messages in their own window</label>
@@ -162,6 +187,10 @@
                         <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
                             <input type="checkbox" id="setting-compose-html" style="width: auto;" onchange="saveAllSettings()">
                             <label for="setting-compose-html">Compose new messages as HTML</label>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+                            <input type="checkbox" id="setting-mark-read" style="width: auto;" onchange="saveAllSettings()">
+                            <label for="setting-mark-read">Mark messages as read automatically after 3 seconds</label>
                         </div>
                     </div>
 
@@ -196,6 +225,10 @@
                             <input type="checkbox" id="setting-starred" style="width: auto;" onchange="saveAllSettings()">
                             <label for="setting-starred">Show Starred mailbox</label>
                         </div>
+                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+                            <input type="checkbox" id="setting-collapse-sidebar" style="width: auto;" onchange="saveAllSettings()">
+                            <label for="setting-collapse-sidebar">Always Collapse the Sidebar</label>
+                        </div>
                     </div>
 
                     <!-- Privacy Tab -->
@@ -209,6 +242,54 @@
                             <input type="checkbox" id="setting-remote-images" style="width: auto;" onchange="saveAllSettings()">
                             <label for="setting-remote-images">Always display external images</label>
                         </div>
+                    </div>
+
+                    <!-- Contacts Tab -->
+                    <div id="tab-contacts" class="tab-panel">
+                        <h4>Recent Activity</h4>
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                            <input type="checkbox" id="setting-autocomplete-recents" style="width: auto;" onchange="saveAllSettings()">
+                            <label for="setting-autocomplete-recents" style="color: var(--text-gray);">Auto-complete from Recents</label>
+                        </div>
+
+                        <h4>Auto-complete from Account Contacts</h4>
+                        <div id="contacts-accounts-list" style="margin-top: 10px;">
+                            <!-- Account toggles will be rendered here -->
+                        </div>
+
+                        <h4 style="margin-top: 25px;">Maintenance</h4>
+                        <p style="font-size: 13px; color: var(--text-gray); margin-bottom: 10px;">If your contacts are out of sync or you want to free up space, you can clear the local cache. Contacts will be re-synced from Google on next refresh.</p>
+                        <button class="remove-btn" style="background-color: var(--text-gray);" onclick="clearLocalContacts()">Clear Local Contact Cache</button>
+                    </div>
+
+                    <!-- Advanced Tab -->
+                    <div id="tab-advanced" class="tab-panel">
+                        <h4>Google API Configuration</h4>
+                        <div class="form-group">
+                            <label>Google Client ID <span id="client-id-env-badge" class="env-badge" style="display:none">Set via .env</span></label>
+                            <input type="text" id="client-id" placeholder="Client ID" onchange="saveAllSettings()">
+                        </div>
+                        <div class="form-group">
+                            <label>Google Client Secret <span id="client-secret-env-badge" class="env-badge" style="display:none">Set via .env</span></label>
+                            <input type="password" id="client-secret" placeholder="Client Secret" onchange="saveAllSettings()">
+                        </div>
+                        <div id="credentials-feedback" style="margin-bottom: 20px; font-size: 13px;"></div>
+
+                        <div style="background-color: var(--bg-light-gray); padding: 15px; border-radius: 4px; margin-bottom: 20px; font-size: 13px;">
+                            <p style="margin-bottom: 5px;"><b>Status:</b> <span id="stats-status" style="color: green;">Connected</span></p>
+                            <p>To enable permanent deletion in Trash/Spam folders, set <code>ENABLE_DELETION_SCOPE=true</code> in your <code>.env</code> file.</p>
+                        </div>
+
+                        <h4>System Statistics</h4>
+                        <div id="system-stats" style="font-size: 13px; color: var(--text-gray); display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: var(--bg-white); border: 1px solid var(--border-gray); padding: 15px; border-radius: 4px;">
+                            <div>Connected Accounts:</div> <div id="stat-accounts" style="color: var(--text-black);">-</div>
+                            <div>Recent Interactions:</div> <div id="stat-recents" style="color: var(--text-black);">-</div>
+                            <div>Google Contacts:</div> <div id="stat-contacts" style="color: var(--text-black);">-</div>
+                            <div>Database Size:</div> <div id="stat-db-size" style="color: var(--text-black);">-</div>
+                            <div>Message Cache Size:</div> <div id="stat-cache-size" style="color: var(--text-black);">-</div>
+                            <div>Full Deletion Scope:</div> <div id="stat-deletion" style="color: var(--text-black);">-</div>
+                        </div>
+                        <button class="remove-btn" style="margin-top: 10px; background-color: var(--text-gray); width: auto; padding: 8px 15px;" onclick="loadStats()">Refresh Statistics</button>
                     </div>
                 </div>
             </div>
@@ -273,6 +354,9 @@
             }
 
             await loadSettings();
+            if (globalSettings.ALWAYS_COLLAPSE_SIDEBAR === 'true') {
+                document.getElementById('sidebar').classList.add('collapsed');
+            }
             await loadAccounts();
             if (accounts.length === 0) {
                 document.getElementById('first-run-prompt').style.display = 'flex';
@@ -290,6 +374,7 @@
             document.getElementById('client-secret').value = globalSettings.GOOGLE_CLIENT_SECRET || '';
             document.getElementById('setting-compose-window').checked = globalSettings.COMPOSE_NEW_WINDOW !== 'false';
             document.getElementById('setting-compose-html').checked = globalSettings.COMPOSE_AS_HTML !== 'false';
+            document.getElementById('setting-mark-read').checked = globalSettings.MARK_READ_AUTOMATICALLY !== 'false';
             
             const warnDeleteCheckbox = document.getElementById('setting-warn-delete');
             warnDeleteCheckbox.checked = globalSettings.WARN_BEFORE_DELETE !== 'false';
@@ -328,8 +413,13 @@
             document.getElementById('setting-theme').value = globalSettings.THEME || 'automatic';
             document.getElementById('setting-disclosure').checked = globalSettings.SHOW_DISCLOSURE_IF_SINGLE === 'true';
             document.getElementById('setting-starred').checked = globalSettings.SHOW_STARRED === 'true';
+            document.getElementById('setting-collapse-sidebar').checked = globalSettings.ALWAYS_COLLAPSE_SIDEBAR === 'true';
 
-            // Populate Privacy Settings            document.getElementById('setting-remote-images').checked = globalSettings.LOAD_REMOTE_IMAGES === 'true';
+            // Populate Contacts Settings
+            document.getElementById('setting-autocomplete-recents').checked = globalSettings.AUTOCOMPLETE_RECENTS === 'true';
+
+            // Populate Privacy Settings
+            document.getElementById('setting-remote-images').checked = globalSettings.LOAD_REMOTE_IMAGES === 'true';
             
             applyTheme(globalSettings.THEME);
             updateStarredMailboxVisibility();
@@ -339,10 +429,19 @@
             const theme = document.getElementById('setting-theme').value;
             const disclosure = document.getElementById('setting-disclosure').checked;
             const starred = document.getElementById('setting-starred').checked;
+            const collapseSidebar = document.getElementById('setting-collapse-sidebar').checked;
             const remoteImages = document.getElementById('setting-remote-images').checked;
             const composeWindow = document.getElementById('setting-compose-window').checked;
             const composeHtml = document.getElementById('setting-compose-html').checked;
+            const markReadAuto = document.getElementById('setting-mark-read').checked;
             const warnDelete = document.getElementById('setting-warn-delete').checked;
+            
+            const autocompleteRecents = document.getElementById('setting-autocomplete-recents').checked;
+            const autocompleteEnabledAccounts = Array.from(document.querySelectorAll('.contact-account-toggle'))
+                .filter(cb => cb.checked)
+                .map(cb => cb.dataset.accid)
+                .join(',');
+
             const clientId = document.getElementById('client-id').value;
             const clientSecret = document.getElementById('client-secret').value;
 
@@ -350,10 +449,14 @@
                 THEME: theme,
                 SHOW_DISCLOSURE_IF_SINGLE: disclosure ? 'true' : 'false',
                 SHOW_STARRED: starred ? 'true' : 'false',
+                ALWAYS_COLLAPSE_SIDEBAR: collapseSidebar ? 'true' : 'false',
                 LOAD_REMOTE_IMAGES: remoteImages ? 'true' : 'false',
                 COMPOSE_NEW_WINDOW: composeWindow ? 'true' : 'false',
                 COMPOSE_AS_HTML: composeHtml ? 'true' : 'false',
-                WARN_BEFORE_DELETE: warnDelete ? 'true' : 'false'
+                MARK_READ_AUTOMATICALLY: markReadAuto ? 'true' : 'false',
+                WARN_BEFORE_DELETE: warnDelete ? 'true' : 'false',
+                AUTOCOMPLETE_RECENTS: autocompleteRecents ? 'true' : 'false',
+                AUTOCOMPLETE_ENABLED_ACCOUNTS: autocompleteEnabledAccounts
             };
             // Only include credentials if they are not disabled (not from env)
             if (!document.getElementById('client-id').disabled) {
@@ -378,6 +481,9 @@
             globalSettings.LOAD_REMOTE_IMAGES = data.LOAD_REMOTE_IMAGES;
             globalSettings.COMPOSE_NEW_WINDOW = data.COMPOSE_NEW_WINDOW;
             globalSettings.COMPOSE_AS_HTML = data.COMPOSE_AS_HTML;
+            globalSettings.MARK_READ_AUTOMATICALLY = data.MARK_READ_AUTOMATICALLY;
+            globalSettings.AUTOCOMPLETE_RECENTS = data.AUTOCOMPLETE_RECENTS;
+            globalSettings.AUTOCOMPLETE_ENABLED_ACCOUNTS = data.AUTOCOMPLETE_ENABLED_ACCOUNTS;
 
             updateDisclosureTriangles();
             updateStarredMailboxVisibility();
@@ -416,6 +522,11 @@
             updateDisclosureTriangles();
             renderAccountsInSettings();
             await loadLabels();
+            
+            // Trigger contact sync for each account (delta sync)
+            accounts.forEach(acc => {
+                fetch(`/accounts/${acc.id}/sync-contacts`);
+            });
 
             // Hide mailbox list and compose button if no accounts
             const mailboxList = document.getElementById('mailbox-list');
@@ -445,7 +556,7 @@
                         <i class="fa-solid fa-arrow-right label-expand-icon"></i>
                     </div>
                     <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${acc.email}</span>
-                    <i class="fa-solid fa-plus" style="margin-left: 8px; cursor: pointer; opacity: 0.6; padding: 2px 5px;" onclick="createNewLabel(event, ${acc.id}, '${acc.email}')" title="New Label"></i>
+                    <i class="fa-solid fa-plus" style="margin-left: auto; cursor: pointer; opacity: 0.6; padding: 2px 5px;" onclick="createNewLabel(event, ${acc.id}, '${acc.email}')" title="New Label"></i>
                 `;
                 container.appendChild(accItem);
 
@@ -548,12 +659,40 @@
             });
         }
 
+        function renderContactsAccounts() {
+            const list = document.getElementById('contacts-accounts-list');
+            if (!list) return;
+            list.innerHTML = '';
+            
+            const enabledIds = (globalSettings.AUTOCOMPLETE_ENABLED_ACCOUNTS || "").split(",").filter(id => id.trim());
+            
+            accounts.forEach(acc => {
+                const isChecked = enabledIds.includes(acc.id.toString());
+                const row = document.createElement('div');
+                row.style.display = 'flex';
+                row.style.justifyContent = 'space-between';
+                row.style.alignItems = 'center';
+                row.style.padding = '8px 0';
+                row.style.borderBottom = '1px solid var(--border-gray)';
+                row.innerHTML = `
+                    <span style="font-size: 14px;">${acc.email}</span>
+                    <input type="checkbox" class="contact-account-toggle" data-accid="${acc.id}" style="width: auto;" ${isChecked ? 'checked' : ''} onchange="saveAllSettings()">
+                `;
+                list.appendChild(row);
+            });
+            if (accounts.length === 0) {
+                list.innerHTML = '<p style="color: var(--text-gray); font-size: 13px;">No accounts connected.</p>';
+            }
+        }
+
         async function removeAccount(id, email) {
             if (!confirm(`Are you sure you want to remove ${email}?`)) return;
-            
+
             const res = await fetch(`/accounts/${id}`, { method: 'DELETE' });
             if (res.ok) {
                 await loadAccounts();
+                renderAccountsInSettings();
+                renderContactsAccounts();
                 if (currentAccountId === id) {
                     loadMailbox('INBOX');
                 }
@@ -566,11 +705,63 @@
             document.getElementById('settings-modal').style.display = 'flex';
             loadSettings();
             renderAccountsInSettings();
+            renderContactsAccounts();
+            loadStats();
         }
-
         function closeSettings() {
             saveAllSettings();
             document.getElementById('settings-modal').style.display = 'none';
+        }
+
+        async function clearLocalContacts() {
+            if (!confirm("Are you sure you want to clear all locally cached contacts and recents? This will force a full re-sync from Google.")) return;
+            
+            try {
+                const res = await fetch('/contacts/clear', { method: 'POST' });
+                if (res.ok) {
+                    alert("Local contact cache cleared successfully.");
+                    loadStats();
+                } else {
+                    alert("Failed to clear contact cache.");
+                }
+            } catch (err) {
+                console.error(err);
+                alert("An error occurred while clearing the cache.");
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const res = await fetch('/stats');
+                const data = await res.json();
+                
+                if (data.error) {
+                    document.getElementById('stats-status').innerText = 'Error';
+                    document.getElementById('stats-status').style.color = 'red';
+                    return;
+                }
+
+                document.getElementById('stats-status').innerText = 'Connected';
+                document.getElementById('stats-status').style.color = 'green';
+                
+                document.getElementById('stat-accounts').innerText = data.accounts;
+                document.getElementById('stat-recents').innerText = data.recent_contacts;
+                document.getElementById('stat-contacts').innerText = data.google_contacts;
+                document.getElementById('stat-db-size').innerText = formatBytes(data.db_size_bytes);
+                document.getElementById('stat-cache-size').innerText = formatBytes(data.cache_size_bytes);
+                document.getElementById('stat-deletion').innerText = data.deletion_scope_enabled ? 'Yes' : 'No (Modify only)';
+            } catch (err) {
+                console.error("Failed to load stats", err);
+            }
+        }
+
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
         }
 
         function switchTab(tab) {
@@ -752,23 +943,23 @@
                 document.getElementById('message-list').innerHTML = '<div style="padding: 20px; text-align: center;">Searching...</div>';
                 document.getElementById('view-name').innerText = `Search: ${query}`;
                 hideMessageDetail();
-                
+
                 // Remove active state from sidebar
                 document.querySelectorAll('.mailbox-item').forEach(item => item.classList.remove('active'));
             }
 
-            // For search, we use the currently active account OR the first account
-            let accId = currentAccountId || (accounts.length > 0 ? accounts[0].id : null);
-            if (!accId) {
-                alert("Please add an account first");
-                return;
+            // Determine the search URL based on current context
+            let url = "";
+            if (currentAccountId === null) {
+                url = `/unified/search?q=${encodeURIComponent(query)}&max_results=20`;
+            } else {
+                url = `/accounts/${currentAccountId}/search?q=${encodeURIComponent(query)}&max_results=20`;
             }
 
             try {
-                let url = `/accounts/${accId}/search?q=${encodeURIComponent(query)}&max_results=20`;
                 if (append && nextPageToken) url += `&page_token=${nextPageToken}`;
                 if (refresh) url += `&refresh=true`;
-                
+
                 const res = await fetch(url);
                 if (!res.ok) {
                     const error = await res.json();
@@ -778,7 +969,7 @@
                 }
                 const data = await res.json();
                 nextPageToken = data.nextPageToken || null;
-                
+
                 document.getElementById('load-more-btn').style.display = nextPageToken ? 'inline-block' : 'none';
                 renderMessages(data.messages, append);
             } catch (err) {
@@ -787,6 +978,53 @@
             }
         }
 
+        function toggleAdvancedSearch(event) {
+            if (event) event.stopPropagation();
+            const dropdown = document.getElementById('advanced-search-dropdown');
+            dropdown.classList.toggle('open');
+        }
+
+        function performAdvancedSearch() {
+            const from = document.getElementById('adv-from').value;
+            const subject = document.getElementById('adv-subject').value;
+            const body = document.getElementById('adv-body').value;
+            const after = document.getElementById('adv-date-after').value;
+            const before = document.getElementById('adv-date-before').value;
+            const hasAttachment = document.getElementById('adv-has-attachment').checked;
+
+            let queryParts = [];
+            if (from) queryParts.push(`from:${from}`);
+            if (subject) queryParts.push(`subject:${subject}`);
+            if (body) queryParts.push(body);
+            if (after) queryParts.push(`after:${after.replace(/-/g, '/')}`);
+            if (before) queryParts.push(`before:${before.replace(/-/g, '/')}`);
+            if (hasAttachment) queryParts.push(`has:attachment`);
+
+            const query = queryParts.join(' ');
+            if (query) {
+                document.getElementById('search-input').value = query;
+                performSearch();
+            }
+            toggleAdvancedSearch();
+        }
+
+        function clearAdvancedSearch() {
+            document.getElementById('adv-from').value = '';
+            document.getElementById('adv-subject').value = '';
+            document.getElementById('adv-body').value = '';
+            document.getElementById('adv-date-after').value = '';
+            document.getElementById('adv-date-before').value = '';
+            document.getElementById('adv-has-attachment').checked = false;
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const dropdown = document.getElementById('advanced-search-dropdown');
+            const toggle = document.getElementById('advanced-search-toggle');
+            if (dropdown && dropdown.classList.contains('open') && !dropdown.contains(e.target) && !toggle.contains(e.target)) {
+                dropdown.classList.remove('open');
+            }
+        });
         function renderMessages(messages, append = false) {
             const list = document.getElementById('message-list');
             if (!append) {
@@ -824,7 +1062,9 @@
                 item.className = 'message-item';
                 item.id = `msg-${msg.id}`;
                 const accountId = msg.accountId || msg.account_id || currentAccountId;
+                const isUnread = msg.labelIds && msg.labelIds.includes('UNREAD');
                 item.innerHTML = `
+                    <div class="unread-dot ${isUnread ? '' : 'invisible'}"></div>
                     <input type="checkbox" class="message-checkbox" onclick="event.stopPropagation(); updateSelectionCount()" data-id="${msg.id}" data-accid="${accountId}">
                     <div class="message-sender">${msg.from || msg.accountEmail || ''}</div>
                     <div class="message-snippet"><b>${msg.subject || '(no subject)'}</b> - ${msg.snippet}</div>
@@ -1073,6 +1313,42 @@
                 const res = await fetch(`/accounts/${accId}/messages/${id}`);
                 const msg = await res.json();
                 
+                const isUnread = msg.labelIds && msg.labelIds.includes('UNREAD');
+                
+                // Auto-mark as read after 3 seconds if setting enabled
+                if (isUnread && globalSettings.MARK_READ_AUTOMATICALLY !== 'false') {
+                    setTimeout(async () => {
+                        // Check if the same message is still open (or at least panel is still open)
+                        const currentPanel = document.getElementById('message-detail-panel');
+                        if (currentPanel && currentPanel.classList.contains('open')) {
+                            // Check if it's the same message by looking at hidden input if it exists or just re-verifying
+                            // For simplicity, we just proceed if panel is open
+                            await fetch(`/accounts/${accId}/messages/batch-modify`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    ids: [id],
+                                    removeLabelIds: ['UNREAD']
+                                })
+                            });
+                            // Update the list if visible
+                            const listDot = document.querySelector(`#msg-${id} .unread-dot`);
+                            if (listDot) listDot.classList.add('invisible');
+                            // Update the dot in the detail view
+                            const detailDot = document.getElementById('detail-unread-dot');
+                            if (detailDot) detailDot.classList.add('invisible');
+                            // Update the toggle icon
+                            const toggleIcon = document.getElementById('toggle-read-btn');
+                            if (toggleIcon) {
+                                toggleIcon.innerHTML = '<i class="fa-solid fa-envelope"></i>';
+                                toggleIcon.title = 'Mark as Unread';
+                                // We need to update the onclick too
+                                toggleIcon.setAttribute('onclick', `toggleReadStatus('${id}', ${accId}, false)`);
+                            }
+                        }
+                    }, 3000);
+                }
+
                 let hasRemoteImages = false;
                 let sanitizedHtml = msg.html_body;
                 
@@ -1105,12 +1381,18 @@
                             <button class="action-btn" onclick="renderComposerInPanel('${msg.id}', ${accId}, 'replyAll')" title="Reply All"><i class="fa-solid fa-reply-all"></i></button>
                             <button class="action-btn" onclick="renderComposerInPanel('${msg.id}', ${accId}, 'forward')" title="Forward"><i class="fa-solid fa-share"></i></button>
                             <div style="flex: 1;"></div>
+                            <button class="action-btn" id="toggle-read-btn" onclick="toggleReadStatus('${msg.id}', ${accId}, ${isUnread})" title="${isUnread ? 'Mark as Read' : 'Mark as Unread'}">
+                                <i class="fa-solid ${isUnread ? 'fa-envelope-open' : 'fa-envelope'}"></i>
+                            </button>
                             <button class="action-btn" onclick="archiveMessage('${msg.id}', ${accId})" title="Archive"><i class="fa-solid fa-box-archive"></i></button>
                             <button class="action-btn" id="label-picker-btn" onclick="showLabelPicker(event, '${msg.id}', ${accId})" title="Label"><i class="fa-solid fa-tag"></i></button>
                             <button class="action-btn" onclick="trashMessage('${msg.id}', ${accId})" title="${trashTitle}" ${trashDisabledAttr} ${trashStyleAttr}><i class="fa-solid ${trashIcon}"></i></button>
                             ${isSingleView ? '' : '<span class="back-btn" onclick="hideMessageDetail()" style="margin-left: 10px;"><i class="fa-solid fa-xmark"></i></span>'}
                         </div>
-                        <div class="detail-subject">${msg.subject || '(no subject)'}</div>
+                        <div class="detail-subject">
+                            <div id="detail-unread-dot" class="unread-dot ${isUnread ? '' : 'invisible'}" style="display: inline-block; margin-right: 10px; vertical-align: middle;"></div>
+                            <span style="vertical-align: middle;">${msg.subject || '(no subject)'}</span>
+                        </div>
                         <div class="detail-meta">
                             <div class="meta-row">
                                 <span class="meta-label">From:</span>
@@ -1326,6 +1608,10 @@
             const textArea = document.getElementById('panel-compose-body');
             textArea.focus();
             textArea.setSelectionRange(0, 0);
+
+            setupAutocomplete('panel-compose-to');
+            setupAutocomplete('panel-compose-cc');
+            setupAutocomplete('panel-compose-bcc');
         }
 
         async function sendEmailFromPanel(event, accId) {
@@ -1398,6 +1684,46 @@
 
         function forwardMessage(id, accId) {
             renderComposerInPanel(id, accId, 'forward');
+        }
+
+        async function toggleReadStatus(id, accId, currentlyUnread) {
+            const addLabelIds = currentlyUnread ? [] : ['UNREAD'];
+            const removeLabelIds = currentlyUnread ? ['UNREAD'] : [];
+            
+            const res = await fetch(`/accounts/${accId}/messages/batch-modify`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ids: [id],
+                    addLabelIds: addLabelIds,
+                    removeLabelIds: removeLabelIds
+                })
+            });
+            
+            if (res.ok) {
+                const isNowUnread = !currentlyUnread;
+                // Update the list if visible
+                const listDot = document.querySelector(`#msg-${id} .unread-dot`);
+                if (listDot) {
+                    if (isNowUnread) listDot.classList.remove('invisible');
+                    else listDot.classList.add('invisible');
+                }
+                // Update the dot in the detail view
+                const detailDot = document.getElementById('detail-unread-dot');
+                if (detailDot) {
+                    if (isNowUnread) detailDot.classList.remove('invisible');
+                    else detailDot.classList.add('invisible');
+                }
+                // Update the toggle icon
+                const toggleIcon = document.getElementById('toggle-read-btn');
+                if (toggleIcon) {
+                    toggleIcon.innerHTML = `<i class="fa-solid ${isNowUnread ? 'fa-envelope-open' : 'fa-envelope'}"></i>`;
+                    toggleIcon.title = isNowUnread ? 'Mark as Read' : 'Mark as Unread';
+                    toggleIcon.setAttribute('onclick', `toggleReadStatus('${id}', ${accId}, ${isNowUnread})`);
+                }
+            } else {
+                alert("Failed to update status");
+            }
         }
 
         async function archiveMessage(id, accId) {
@@ -1636,7 +1962,11 @@
                 select.appendChild(opt);
             });
 
-            document.getElementById('panel-compose-to').focus();
+            document.getElementById('panel-compose-from').focus(); // wait, this is for renderNewComposer?
+            // Actually I should add it at the end of both functions
+            setupAutocomplete('panel-compose-to');
+            setupAutocomplete('panel-compose-cc');
+            setupAutocomplete('panel-compose-bcc');
         }
 
         function showComposer() {
@@ -1682,6 +2012,147 @@
                 event.stopPropagation();
                 toggleSidebarCollapse();
             }
+        }
+
+        let autocompleteTimeout = null;
+
+        function setupAutocomplete(inputId) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+
+            input.addEventListener('input', () => {
+                clearTimeout(autocompleteTimeout);
+                const val = input.value;
+                const lastComma = val.lastIndexOf(',');
+                const q = (lastComma === -1 ? val : val.substring(lastComma + 1)).trim();
+                
+                if (q.length < 1) {
+                    closeAutocomplete();
+                    return;
+                }
+
+                autocompleteTimeout = setTimeout(() => {
+                    fetchAutocomplete(q, input);
+                }, 200);
+            });
+
+            input.addEventListener('keydown', (e) => {
+                const dropdown = document.getElementById('autocomplete-dropdown');
+                if (!dropdown) return;
+
+                const items = dropdown.querySelectorAll('.autocomplete-item');
+                let selectedIndex = Array.from(items).findIndex(item => item.classList.contains('selected'));
+
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (selectedIndex < items.length - 1) {
+                        if (selectedIndex >= 0) items[selectedIndex].classList.remove('selected');
+                        items[selectedIndex + 1].classList.add('selected');
+                        items[selectedIndex + 1].scrollIntoView({ block: 'nearest' });
+                    }
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (selectedIndex > 0) {
+                        items[selectedIndex].classList.remove('selected');
+                        items[selectedIndex - 1].classList.add('selected');
+                        items[selectedIndex - 1].scrollIntoView({ block: 'nearest' });
+                    }
+                } else if (e.key === 'Enter' || e.key === 'Tab') {
+                    const selected = dropdown.querySelector('.autocomplete-item.selected');
+                    if (selected) {
+                        e.preventDefault();
+                        selectAutocompleteItem(selected.dataset.email, selected.dataset.name, input);
+                    }
+                } else if (e.key === 'Escape') {
+                    closeAutocomplete();
+                }
+            });
+
+            // Close when clicking outside
+            document.addEventListener('click', (e) => {
+                const dropdown = document.getElementById('autocomplete-dropdown');
+                if (dropdown && !dropdown.contains(e.target) && e.target !== input) {
+                    closeAutocomplete();
+                }
+            });
+        }
+
+        async function fetchAutocomplete(q, input) {
+            const includeRecents = globalSettings.AUTOCOMPLETE_RECENTS !== 'false';
+            const enabledAccounts = globalSettings.AUTOCOMPLETE_ENABLED_ACCOUNTS || "";
+            
+            if (!includeRecents && !enabledAccounts) {
+                closeAutocomplete();
+                return;
+            }
+
+            try {
+                const url = `/autocomplete?q=${encodeURIComponent(q)}&include_recents=${includeRecents}&account_ids=${enabledAccounts}`;
+                const res = await fetch(url);
+                const results = await res.json();
+                
+                if (results.length === 0) {
+                    closeAutocomplete();
+                    return;
+                }
+
+                showAutocompleteDropdown(results, input);
+            } catch (e) {
+                console.error("Autocomplete fetch failed", e);
+            }
+        }
+
+        function showAutocompleteDropdown(results, input) {
+            closeAutocomplete();
+            
+            const rect = input.getBoundingClientRect();
+            const dropdown = document.createElement('div');
+            dropdown.id = 'autocomplete-dropdown';
+            dropdown.className = 'autocomplete-dropdown';
+            dropdown.style.top = `${rect.bottom + window.scrollY}px`;
+            dropdown.style.left = `${rect.left + window.scrollX}px`;
+            dropdown.style.width = `${rect.width}px`;
+
+            results.forEach((r, index) => {
+                const item = document.createElement('div');
+                item.className = 'autocomplete-item' + (index === 0 ? ' selected' : '');
+                item.dataset.email = r.email;
+                item.dataset.name = r.name || '';
+                
+                const avatar = r.photo_url 
+                    ? `<img src="${r.photo_url}" alt="">`
+                    : `<i class="fa-solid fa-user"></i>`;
+                    
+                item.innerHTML = `
+                    <div class="avatar">${avatar}</div>
+                    <div class="info">
+                        <div class="name">${r.name || r.email}</div>
+                        <div class="email">${r.email}</div>
+                    </div>
+                    <div class="type-badge ${r.type}">${r.type}</div>
+                `;
+                
+                item.onclick = () => selectAutocompleteItem(r.email, r.name, input);
+                dropdown.appendChild(item);
+            });
+
+            document.body.appendChild(dropdown);
+        }
+
+        function selectAutocompleteItem(email, name, input) {
+            const val = input.value;
+            const lastComma = val.lastIndexOf(',');
+            const base = lastComma === -1 ? '' : val.substring(0, lastComma + 1).trim() + ' ';
+            
+            const formatted = name ? `"${name}" <${email}>` : email;
+            input.value = base + formatted + ', ';
+            input.focus();
+            closeAutocomplete();
+        }
+
+        function closeAutocomplete() {
+            const dropdown = document.getElementById('autocomplete-dropdown');
+            if (dropdown) dropdown.remove();
         }
 
         init();

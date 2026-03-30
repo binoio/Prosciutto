@@ -13,9 +13,9 @@ echo -e "${BLUE}=======================================${NC}"
 
 function show_menu() {
     echo -e "\n${YELLOW}Please choose an action:${NC}"
-    echo "1) Create GCP Project & Enable Gmail API (Local Dev)"
+    echo "1) Create GCP Project & Enable Gmail/People APIs (Local Dev)"
     echo "2) Configure Local OAuth Credentials (.env)"
-    echo "3) Enable/Disable Gmail API only"
+    echo "3) Enable/Disable Gmail and People APIs"
     echo "4) Prepare for Cloud Run (Requires Billing)"
     echo "5) Deploy Stack to Cloud Run"
     echo "6) Teardown (Delete Project)"
@@ -57,8 +57,8 @@ function create_project() {
     gcloud projects create "$PROJECT_ID"
     gcloud config set project "$PROJECT_ID"
     
-    echo -e "${GREEN}Enabling Gmail API...${NC}"
-    gcloud services enable gmail.googleapis.com
+    echo -e "${GREEN}Enabling Gmail and People APIs...${NC}"
+    gcloud services enable gmail.googleapis.com people.googleapis.com
     
     echo -e "${YELLOW}Important:${NC} You MUST create OAuth2 credentials manually in the console:"
     echo "https://console.cloud.google.com/apis/credentials?project=$PROJECT_ID"
@@ -95,14 +95,14 @@ function prepare_cloud_run() {
     echo -e "${YELLOW}Note:${NC} Ensure your OAuth credentials have your Cloud Run URL added as an Authorized Redirect URI."
 }
 
-function toggle_gmail_api() {
-    read -p "Enable or Disable? (e/d): " action
+function toggle_email_contact_apis() {
+    read -p "Enable or Disable Gmail and People APIs? (e/d): " action
     if [ "$action" == "e" ]; then
-        gcloud services enable gmail.googleapis.com
-        echo -e "${GREEN}Gmail API enabled.${NC}"
+        gcloud services enable gmail.googleapis.com people.googleapis.com
+        echo -e "${GREEN}Gmail and People APIs enabled.${NC}"
     else
-        gcloud services disable gmail.googleapis.com
-        echo -e "${RED}Gmail API disabled.${NC}"
+        gcloud services disable gmail.googleapis.com people.googleapis.com
+        echo -e "${RED}Gmail and People APIs disabled.${NC}"
     fi
 }
 
@@ -133,7 +133,7 @@ while true; do
     case $choice in
         1) create_project ;;
         2) configure_local_env ;;
-        3) toggle_gmail_api ;;
+        3) toggle_email_contact_apis ;;
         4) prepare_cloud_run ;;
         5) deploy_stack ;;
         6) teardown ;;
