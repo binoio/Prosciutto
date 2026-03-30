@@ -9,6 +9,8 @@ A web app for viewing unified mailboxes across Gmail accounts.
 - **Individual Inbox View**: View emails for a specific account.
 - **Message Detail Panel**: Polished side panel that opens when selecting a message, with support for full HTML rendering and plain text fallbacks.
 - **Compose & Send**: Send emails from any of the connected accounts.
+- **Autocomplete & Contacts**: Smart recipient auto-completion in the composer, drawing from a 30-day warm-up of your "Sent" folder (Recents) and synced Google Contacts (via the People API). Includes settings to manage or clear this cache.
+- **System Statistics**: Monitor your connected accounts, database size, cache usage, and synced contact counts directly from the Advanced settings.
 - **Interactive GCP Scripts**: Easy project setup, API management, and deployment.
 - **Mock Tests**: Comprehensive test suite with Google API mocks.
 - **GitHub Actions**: Continuous integration with automated tests on every push.
@@ -16,9 +18,9 @@ A web app for viewing unified mailboxes across Gmail accounts.
 ## Technical Architecture
 
 - **Backend**: Python 3.11 with [FastAPI](https://fastapi.tiangolo.com/).
-  - **Database**: [SQLModel](https://sqlmodel.tiangolo.com/) (SQLAlchemy + Pydantic) with SQLite for local storage of settings and account tokens.
+  - **Database**: [SQLModel](https://sqlmodel.tiangolo.com/) (SQLAlchemy + Pydantic) with SQLite for local storage of settings, account tokens, and contact caches.
   - **Caching**: [DiskCache](http://www.grantjenks.com/docs/diskcache/) for improved performance when fetching message details.
-  - **Gmail API**: Integrated via `google-api-python-client` with OAuth2 flow.
+  - **Google APIs**: Integrated via `google-api-python-client` using the Gmail API (for mail) and the People API (for contacts) with an OAuth2 flow.
 - **Frontend**: Vanilla HTML5, CSS3, and JavaScript.
   - **UI**: Modern design with responsive sidebar and multi-tab settings modal.
   - **Icons**: [Font Awesome 6](https://fontawesome.com/).
@@ -33,8 +35,9 @@ A web app for viewing unified mailboxes across Gmail accounts.
 ### Accounts & Settings
 - `GET /accounts`: List all connected accounts.
 - `DELETE /accounts/{id}`: Remove a connected account.
-- `GET /settings`: Get current app settings (GCP credentials, theme).
+- `GET /settings`: Get current app settings (GCP credentials, theme, etc.).
 - `POST /settings`: Update app settings.
+- `GET /stats`: Retrieve system statistics (database size, cache size, contact counts).
 
 ### Gmail Operations
 - `GET /unified/messages`: Unified inbox across all accounts.
@@ -42,6 +45,11 @@ A web app for viewing unified mailboxes across Gmail accounts.
 - `GET /accounts/{id}/messages/{msg_id}`: Get full details of a specific message.
 - `GET /accounts/{id}/search`: Search mail within an account.
 - `POST /accounts/{id}/send`: Compose and send an email.
+
+### Contacts & Autocomplete
+- `GET /autocomplete`: Fetch ranked autocomplete suggestions for the composer (searches Recents and Google Contacts).
+- `GET /accounts/{account_id}/sync-contacts`: Trigger a background delta-sync of Google Contacts.
+- `POST /contacts/clear`: Clear the local contacts and recents cache, forcing a full re-sync.
 
 ## Prerequisites
 
@@ -53,15 +61,15 @@ A web app for viewing unified mailboxes across Gmail accounts.
 
 ### 1. GCP Setup
 
-Use the interactive script to set up your Google Cloud project and enable necessary APIs:
+Use the interactive script to set up your Google Cloud project and enable necessary APIs (Gmail and People APIs):
 
 ```bash
 ./gcp_setup.sh
 ```
 
-Choose **Option 1** to create a project and enable APIs. Follow the instructions to create OAuth2 credentials in the Google Cloud Console. Then, use **Option 2** to save your credentials to `.env`.
+Choose **Option 1** to create a project and enable the APIs. Follow the instructions to create OAuth2 credentials in the Google Cloud Console. Then, use **Option 2** to save your credentials to `.env`.
 
-### 2. Local Setup
+### 2. Local Setup (Without Docker)
 
 Create a virtual environment and install dependencies:
 
@@ -73,11 +81,19 @@ pip install -r backend/requirements.txt
 
 ### 3. Running the App
 
-Start the FastAPI server:
+#### Using standard Python:
+Start the FastAPI server from the root directory:
 
 ```bash
-cd backend
-uvicorn main:app --reload
+export PYTHONPATH=.
+source venv/bin/activate
+python3 -m uvicorn backend.main:app --reload
+```
+
+#### Using Docker Compose:
+The project uses host-mounted volumes for the database to ensure data persists directly on your machine.
+```bash
+docker-compose up --build
 ```
 
 Open [http://localhost:8000](http://localhost:8000) in your browser.
@@ -85,9 +101,9 @@ Open [http://localhost:8000](http://localhost:8000) in your browser.
 ### 4. Configuration
 
 1. Go to the **Settings** panel in the web app.
-2. Enter your **Google Client ID** and **Google Client Secret** obtained from the GCP Console.
+2. Enter your **Google Client ID** and **Google Client Secret** obtained from the GCP Console (if not loaded via `.env`).
 3. Click **Save Settings**.
-4. Click **+ Add Account** to authenticate your Gmail accounts.
+4. Click **+ Add Account** to authenticate your Google accounts.
 
 **Note on Permanent Deletion**: By default, the app requests the `gmail.modify` scope, which allows moving messages to the Trash but does *not* allow permanent deletion (using the "Permanently Delete" action in the Trash/Spam folders). To enable permanent deletion, you must:
 1. Create a `.env` file in the project root.
