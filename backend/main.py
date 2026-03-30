@@ -666,6 +666,112 @@ async def create_label(account_id: int, request: CreateLabelRequest, session: Se
         logger.error(f"Error creating label: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/autocomplete")
+async def autocomplete(q: str, account_ids: str = None, session: Session = Depends(get_session)):
+    if not q or len(q) < 1:
+        return []
+    
+    ids = []
+    if account_ids:
+        try:
+            ids = [int(i) for i in account_ids.split(",") if i.strip()]
+        except:
+            pass
+    
+    if not ids:
+        accounts = session.exec(select(Account).where(Account.is_active == True)).all()
+        ids = [a.id for a in accounts]
+    
+    if not ids:
+        return []
+        
+    results = []
+    
+    # 1. Search Recents (Priority 1)
+    recents = session.exec(
+        select(RecentContact)
+        .where(RecentContact.account_id.in_(ids))
+        .where(
+            (RecentContact.email.ilike(f"%{q}%")) | 
+            (RecentContact.name.ilike(f"%{q}%"))
+        )
+        .order_by(desc(RecentContact.last_interacted))
+        .limit(50)
+    ).all()
+    
+    for r in recents:
+        results.append({
+            "email": r.email,
+            "name": r.name,
+            "type": "recent",
+            "priority": 1,
+            "account_id": r.account_id
+        })
+    
+    # 2. Search Google Contacts Starred (Priority 2)
+    starred = session.exec(
+        select(GoogleContact)
+        .where(GoogleContact.account_id.in_(ids))
+        .where(GoogleContact.is_starred == True)
+        .where(
+            (GoogleContact.email.ilike(f"%{q}%")) | 
+            (GoogleContact.name.ilike(f"%{q}%"))
+        )
+        .limit(50)
+    ).all()
+    
+    for c in starred:
+        results.append({
+            "email": c.email,
+            "name": c.name,
+            "photo_url": c.photo_url,
+            "type": "starred",
+            "priority": 2,
+            "account_id": c.account_id
+        })
+        
+    # 3. Search Google Contacts General (Priority 3)
+    others = session.exec(
+        select(GoogleContact)
+        .where(GoogleContact.account_id.in_(ids))
+        .where(GoogleContact.is_starred == False)
+        .where(
+            (GoogleContact.email.ilike(f"%{q}%")) | 
+            (GoogleContact.name.ilike(f"%{q}%"))
+        )
+        .limit(50)
+    ).all()
+    
+    for c in others:
+        results.append({
+            "email": c.email,
+            "name": c.name,
+            "photo_url": c.photo_url,
+            "type": "contact",
+            "priority": 3,
+            "account_id": c.account_id
+        })
+
+    # Deduplicate and rank
+    unique_results = {}
+    for r in results:
+        email = r["email"].lower()
+        if email not in unique_results or r["priority"] < unique_results[email]["priority"]:
+            unique_results[email] = r
+            
+    sorted_results = sorted(unique_results.values(), key=lambda x: (x["priority"], x["name"] or x["email"]))
+    
+    return sorted_results[:20]
+
+@app.get("/accounts/{account_id}/sync-contacts")
+async def trigger_contact_sync(account_id: int, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+    account = session.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    background_tasks.add_task(sync_google_contacts, account_id)
+    return {"message": "Contact sync started in background"}
+
 @app.get("/accounts/{account_id}/messages")
 async def list_messages(account_id: int, label: str = None, page_token: str = None, refresh: bool = False, session: Session = Depends(get_session)):
     service = get_gmail_service(account_id, session)
