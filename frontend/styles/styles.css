@@ -212,7 +212,52 @@ body {
 }
 .message-sender { width: var(--sender-width, 200px); font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
 .message-snippet { flex: 1; color: var(--text-gray); font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 15px; }
-.message-date { width: 100px; text-align: right; color: var(--text-gray); font-size: 0.85em; flex-shrink: 0; }
+.message-date { 
+    width: 100px; 
+    text-align: right; 
+    color: var(--text-gray); 
+    font-size: 0.85em; 
+    flex-shrink: 0; 
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    height: 100%;
+}
+
+.message-item-actions {
+    display: none;
+    gap: 2px;
+    align-items: center;
+}
+
+.message-item:hover .message-date-text {
+    display: none;
+}
+
+.message-item:hover .message-item-actions {
+    display: flex;
+}
+
+.hover-action-btn {
+    background: none;
+    border: none;
+    color: var(--text-gray);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s, color 0.2s;
+    font-size: 14px;
+}
+
+.hover-action-btn:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-dark);
+}
+
 
 .column-header {
     font-size: 12px;

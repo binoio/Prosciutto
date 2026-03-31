@@ -836,7 +836,20 @@ function renderMessages(messages, append = false) {
             <input type="checkbox" class="message-checkbox" onclick="event.stopPropagation(); updateSelectionCount()" data-id="${msg.id}" data-accid="${accountId}">
             <div class="message-sender">${msg.from || msg.accountEmail || ''}</div>
             <div class="message-snippet"><b>${msg.subject || '(no subject)'}</b> - ${msg.snippet}</div>
-            <div class="message-date">${new Date(msg.internalDate).toLocaleDateString()}</div>
+            <div class="message-date">
+                <span class="message-date-text">${new Date(msg.internalDate).toLocaleDateString()}</span>
+                <div class="message-item-actions">
+                    <button class="hover-action-btn toggle-read" onclick="event.stopPropagation(); toggleReadStatus('${msg.id}', ${accountId}, ${isUnread})" title="${isUnread ? 'Mark as Read' : 'Mark as Unread'}">
+                        <i class="fa-solid ${isUnread ? 'fa-envelope-open' : 'fa-envelope'}"></i>
+                    </button>
+                    <button class="hover-action-btn archive" onclick="event.stopPropagation(); archiveMessage('${msg.id}', ${accountId})" title="Archive">
+                        <i class="fa-solid fa-box-archive"></i>
+                    </button>
+                    <button class="hover-action-btn delete" onclick="event.stopPropagation(); trashMessage('${msg.id}', ${accountId})" title="Delete">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </div>
+            </div>
         `;
         item.onclick = () => showMessage(msg.id, accountId);
         item.ondblclick = () => openMessageInNewWindow(msg.id, accountId);
@@ -1480,6 +1493,12 @@ async function toggleReadStatus(id, accId, currentlyUnread) {
             toggleIcon.innerHTML = `<i class="fa-solid ${isNowUnread ? 'fa-envelope-open' : 'fa-envelope'}"></i>`;
             toggleIcon.title = isNowUnread ? 'Mark as Read' : 'Mark as Unread';
             toggleIcon.setAttribute('onclick', `toggleReadStatus('${id}', ${accId}, ${isNowUnread})`);
+        }
+        const hoverToggleBtn = document.querySelector(`#msg-${id} .toggle-read`);
+        if (hoverToggleBtn) {
+            hoverToggleBtn.innerHTML = `<i class="fa-solid ${isNowUnread ? 'fa-envelope-open' : 'fa-envelope'}"></i>`;
+            hoverToggleBtn.title = isNowUnread ? 'Mark as Read' : 'Mark as Unread';
+            hoverToggleBtn.setAttribute('onclick', `event.stopPropagation(); toggleReadStatus('${id}', ${accId}, ${isNowUnread})`);
         }
     } else {
         alert("Failed to update status");
