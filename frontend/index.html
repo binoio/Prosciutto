@@ -694,6 +694,13 @@
                     // If we just disabled the currently viewed account, switch to unified inbox
                     if (!isActive && currentAccountId === id) {
                         loadMailbox('INBOX');
+                    } else if (currentAccountId === null) {
+                        // Instantly refresh the unified view to reflect the toggled account
+                        if (currentLabel === 'SEARCH') {
+                            performSearch(false, false);
+                        } else {
+                            loadMailbox(currentLabel, false, false);
+                        }
                     }
                 } else {
                     alert("Failed to update account status");

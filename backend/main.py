@@ -1259,12 +1259,15 @@ async def empty_label(account_id: int, label_id: str, session: Session = Depends
 @app.get("/unified/messages")
 async def unified_messages(label: str = None, page_token: str = None, refresh: bool = False, session: Session = Depends(get_session)):
     cache_key = f"unified_messages_{label}_{page_token}"
+    active_ids = {a.id for a in session.exec(select(Account).where(Account.is_active)).all()}
+    
     if not refresh:
         cached_result = cache.get(cache_key)
         if cached_result:
-            return cached_result
+            filtered_messages = [m for m in cached_result["messages"] if m["accountId"] in active_ids]
+            return {"messages": filtered_messages, "nextPageToken": cached_result["nextPageToken"]}
 
-    accounts = session.exec(select(Account).where(Account.is_active)).all()
+    accounts = session.exec(select(Account)).all()
     
     all_messages = []
     
@@ -1321,7 +1324,9 @@ async def unified_messages(label: str = None, page_token: str = None, refresh: b
     all_messages.sort(key=lambda x: x["internalDate"], reverse=True)
     response_data = {"messages": all_messages, "nextPageToken": next_page_token_str}
     cache.set(cache_key, response_data, expire=300)
-    return response_data
+    
+    filtered_messages = [m for m in all_messages if m["accountId"] in active_ids]
+    return {"messages": filtered_messages, "nextPageToken": next_page_token_str}
 
 @app.get("/unified/search")
 async def unified_search(
@@ -1331,11 +1336,14 @@ async def unified_search(
     session: Session = Depends(get_session)
 ):
     cache_key = f"unified_search_{q}_{page_token}_{max_results}"
+    active_ids = {a.id for a in session.exec(select(Account).where(Account.is_active)).all()}
+    
     cached_result = cache.get(cache_key)
     if cached_result:
-        return cached_result
+        filtered_messages = [m for m in cached_result["messages"] if m["accountId"] in active_ids]
+        return {"messages": filtered_messages, "nextPageToken": cached_result["nextPageToken"]}
 
-    accounts = session.exec(select(Account).where(Account.is_active)).all()
+    accounts = session.exec(select(Account)).all()
     all_messages = []
     
     # Decode page_token if provided (it's a base64-encoded JSON mapping account_id -> individual token)
@@ -1396,7 +1404,9 @@ async def unified_search(
     all_messages.sort(key=lambda x: x["internalDate"], reverse=True)
     response_data = {"messages": all_messages, "nextPageToken": next_page_token_str}
     cache.set(cache_key, response_data, expire=300)
-    return response_data
+    
+    filtered_messages = [m for m in all_messages if m["accountId"] in active_ids]
+    return {"messages": filtered_messages, "nextPageToken": next_page_token_str}
 
 @app.delete("/unified/labels/{label_id}/empty")
 async def empty_unified_label(label_id: str, session: Session = Depends(get_session)):
