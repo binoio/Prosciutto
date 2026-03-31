@@ -513,12 +513,14 @@
             const res = await fetch('/accounts');
             accounts = await res.json();
             
+            const activeAccounts = accounts.filter(a => a.is_active);
+            
             // Populate account subsets in sidebar
             ['INBOX', 'SENT', 'STARRED', 'DRAFT', 'TRASH', 'SPAM', 'ALL'].forEach(label => {
                 const subset = document.getElementById(`accounts-${label}`);
                 if (!subset) return;
                 subset.innerHTML = '';
-                accounts.forEach(acc => {
+                activeAccounts.forEach(acc => {
                     const item = document.createElement('div');
                     item.className = 'account-subset-item';
                     item.innerText = acc.email;
@@ -530,19 +532,19 @@
                 });
             });
 
-            updateDisclosureTriangles();
+            updateDisclosureTriangles(activeAccounts);
             renderAccountsInSettings();
-            await loadLabels();
+            await loadLabels(activeAccounts);
             
-            // Trigger contact sync for each account (delta sync)
-            accounts.forEach(acc => {
+            // Trigger contact sync for each account (delta sync) - can still do this for all or just active
+            activeAccounts.forEach(acc => {
                 fetch(`/accounts/${acc.id}/sync-contacts`);
             });
 
             // Hide mailbox list and compose button if no accounts
             const mailboxList = document.getElementById('mailbox-list');
             const composeArea = document.getElementById('compose-area');
-            if (accounts.length === 0) {
+            if (activeAccounts.length === 0) {
                 mailboxList.style.display = 'none';
                 composeArea.style.display = 'none';
             } else {
@@ -551,11 +553,11 @@
             }
         }
 
-        async function loadLabels() {
+        async function loadLabels(activeAccounts) {
             const container = document.getElementById('labels-container');
             container.innerHTML = '';
             
-            for (const acc of accounts) {
+            for (const acc of activeAccounts) {
                 const accItem = document.createElement('div');
                 accItem.className = 'mailbox-item';
                 accItem.style.display = 'flex';
@@ -628,9 +630,10 @@
             }
         }
 
-        function updateDisclosureTriangles() {
+        function updateDisclosureTriangles(activeAccounts) {
+            const accs = activeAccounts || accounts.filter(a => a.is_active);
             const showAlways = document.getElementById('setting-disclosure').checked;
-            const shouldShow = showAlways || accounts.length > 1;
+            const shouldShow = showAlways || accs.length > 1;
             
             document.querySelectorAll('.disclosure-triangle').forEach(t => {
                 if (shouldShow) {
@@ -662,12 +665,45 @@
             accounts.forEach(acc => {
                 const row = document.createElement('div');
                 row.className = 'account-row';
+                row.style.display = 'flex';
+                row.style.alignItems = 'center';
                 row.innerHTML = `
-                    <span>${acc.email}</span>
+                    <span style="flex: 1; ${!acc.is_active ? 'text-decoration: line-through; color: var(--text-gray);' : ''}">${acc.email}</span>
+                    <label style="display: flex; align-items: center; gap: 5px; margin-right: 15px; font-size: 13px; color: var(--text-gray); cursor: pointer;">
+                        <input type="checkbox" style="width: auto; margin: 0;" ${acc.is_active ? 'checked' : ''} onchange="toggleAccountActive(${acc.id}, this.checked)">
+                        Active
+                    </label>
                     <button class="remove-btn" onclick="removeAccount(${acc.id}, '${acc.email}')">Remove</button>
                 `;
                 list.appendChild(row);
             });
+        }
+
+        async function toggleAccountActive(id, isActive) {
+            try {
+                const res = await fetch(`/accounts/${id}/toggle-active`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_active: isActive })
+                });
+                
+                if (res.ok) {
+                    await loadAccounts();
+                    renderAccountsInSettings();
+                    
+                    // If we just disabled the currently viewed account, switch to unified inbox
+                    if (!isActive && currentAccountId === id) {
+                        loadMailbox('INBOX');
+                    }
+                } else {
+                    alert("Failed to update account status");
+                    renderAccountsInSettings(); // revert checkbox
+                }
+            } catch (err) {
+                console.error(err);
+                alert("An error occurred while updating account status");
+                renderAccountsInSettings(); // revert checkbox
+            }
         }
 
         function renderContactsAccounts() {
@@ -1307,7 +1343,8 @@
 
         async function showMessage(id, accId, isSingleView = false) {
             if (!accId) {
-                accId = accounts[0].id;
+                const activeAcc = accounts.find(a => a.is_active) || accounts[0];
+                accId = activeAcc ? activeAcc.id : null;
             }
             
             // Highlight selected
@@ -1607,7 +1644,7 @@
 
             // Populate "From" dropdown
             const select = document.getElementById('panel-compose-from');
-            accounts.forEach(acc => {
+            accounts.filter(a => a.is_active).forEach(acc => {
                 const opt = document.createElement('option');
                 opt.value = acc.id;
                 opt.innerText = acc.email;
@@ -1886,7 +1923,10 @@
         }
 
         function openMessageInNewWindow(id, accId) {
-            if (!accId) accId = accounts[0].id;
+            if (!accId) {
+                const activeAcc = accounts.find(a => a.is_active) || accounts[0];
+                accId = activeAcc ? activeAcc.id : null;
+            }
             const url = `?messageId=${id}&accountId=${accId}`;
             window.open(url, '_blank', 'width=800,height=600');
         }
@@ -1898,7 +1938,10 @@
         }
 
         function renderNewComposerInPanel(accId) {
-            if (!accId && accounts.length > 0) accId = accounts[0].id;
+            if (!accId) {
+                const activeAcc = accounts.find(a => a.is_active) || accounts[0];
+                if (activeAcc) accId = activeAcc.id;
+            }
             
             const panel = document.getElementById('message-detail-panel');
             delete panel.dataset.currentMessage;
@@ -1965,7 +2008,7 @@
 
             // Populate "From" dropdown
             const select = document.getElementById('panel-compose-from');
-            accounts.forEach(acc => {
+            accounts.filter(a => a.is_active).forEach(acc => {
                 const opt = document.createElement('option');
                 opt.value = acc.id;
                 opt.innerText = acc.email;
@@ -1983,7 +2026,8 @@
         function showComposer() {
             const isNewWindow = globalSettings.COMPOSE_NEW_WINDOW !== 'false';
             if (isNewWindow) {
-                const accId = currentAccountId || (accounts.length > 0 ? accounts[0].id : '');
+                const activeAcc = accounts.find(a => a.is_active) || accounts[0];
+                const accId = currentAccountId || (activeAcc ? activeAcc.id : '');
                 const url = `?compose=true&accountId=${accId}`;
                 window.open(url, '_blank', 'width=800,height=700');
             } else {

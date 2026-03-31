@@ -220,6 +220,19 @@ async def delete_account(account_id: int, session: Session = Depends(get_session
     session.commit()
     return {"message": "Account deleted"}
 
+class AccountToggleRequest(BaseModel):
+    is_active: bool
+
+@app.patch("/accounts/{account_id}/toggle-active")
+async def toggle_account_active(account_id: int, request: AccountToggleRequest, session: Session = Depends(get_session)):
+    account = session.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    account.is_active = request.is_active
+    session.add(account)
+    session.commit()
+    return {"message": "Account status updated", "is_active": account.is_active}
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 @app.get("/")
