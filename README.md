@@ -22,7 +22,8 @@ A web app for viewing unified mailboxes across Gmail accounts.
   - **Caching**: [DiskCache](http://www.grantjenks.com/docs/diskcache/) for improved performance when fetching message details.
   - **Google APIs**: Integrated via `google-api-python-client` using the Gmail API (for mail) and the People API (for contacts) with an OAuth2 flow.
 - **Frontend**: Vanilla HTML5, CSS3, and JavaScript.
-  - **UI**: Modern design with responsive sidebar and multi-tab settings modal.
+  - **Structure**: Refactored for maintainability with separate `index.html`, `styles/styles.css`, and `js/app.js` files.
+  - **UI**: Modern design with responsive sidebar, multi-tab settings modal, and unified mailbox views.
   - **Icons**: [Font Awesome 6](https://fontawesome.com/).
 - **CI/CD**: GitHub Actions for automated testing.
 

@@ -101,15 +101,15 @@ def test_unread_dot_presence_backend(mock_creds_class, mock_build, client: TestC
     assert "UNREAD" in data["messages"][0]["labelIds"]
 
 def test_unread_dot_presence_frontend():
-    # Since we can't easily run a browser, we'll check the index.html content 
+    # Since we can't easily run a browser, we'll check the JS and CSS content 
     # to ensure the unread-dot logic is present and correct.
-    index_path = os.path.join(os.path.dirname(__file__), "../../frontend/index.html")
-    with open(index_path, "r") as f:
-        content = f.read()
+    js_path = os.path.join(os.path.dirname(__file__), "../../frontend/js/app.js")
+    with open(js_path, "r") as f:
+        js_content = f.read()
     
-    # Check if the unread-dot div exists with the correct logic
-    assert 'class="unread-dot ${isUnread ? \'\' : \'invisible\'}"' in content
-    assert "const isUnread = msg.labelIds && msg.labelIds.includes('UNREAD');" in content
+    # Check if the unread-dot div exists with the correct logic in the JS template
+    assert 'class="unread-dot ${isUnread ? \'\' : \'invisible\'}"' in js_content
+    assert "const isUnread = msg.labelIds && msg.labelIds.includes('UNREAD');" in js_content
     
     # Check if the CSS for unread-dot exists and is blue
     css_path = os.path.join(os.path.dirname(__file__), "../../frontend/styles/styles.css")

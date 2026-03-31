@@ -88,17 +88,21 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 def get_client_config():
     client_id = os.getenv("GOOGLE_CLIENT_ID")
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+    app_type = os.getenv("OAUTH_APP_TYPE", "web")
     
     # Using local engine from backend.db
     from backend.db import engine
     with Session(engine) as session:
         client_id_setting = session.exec(select(Setting).where(Setting.key == "GOOGLE_CLIENT_ID")).first()
         client_secret_setting = session.exec(select(Setting).where(Setting.key == "GOOGLE_CLIENT_SECRET")).first()
+        
         client_id = client_id or (client_id_setting.value if client_id_setting else None)
         client_secret = client_secret or (client_secret_setting.value if client_secret_setting else None)
 
-    if not client_id or not client_secret:
-        raise HTTPException(status_code=500, detail="Google Client ID or Secret not configured")
+    if not client_id:
+        raise HTTPException(status_code=500, detail="Google Client ID not configured")
+    if app_type == "web" and not client_secret:
+        raise HTTPException(status_code=500, detail="Google Client Secret not configured for Web App mode")
 
     return {
         "web": {
@@ -106,6 +110,7 @@ def get_client_config():
             "client_secret": client_secret,
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
+            "app_type": app_type
         }
     }
 
@@ -117,10 +122,12 @@ async def get_settings(session: Session = Depends(get_session)):
     # Check if set via environment variables
     env_client_id = os.getenv("GOOGLE_CLIENT_ID")
     env_client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+    app_type = os.getenv("OAUTH_APP_TYPE", "web")
     
     return {
         "GOOGLE_CLIENT_ID": env_client_id or settings_dict.get("GOOGLE_CLIENT_ID", ""),
         "GOOGLE_CLIENT_SECRET": env_client_secret or settings_dict.get("GOOGLE_CLIENT_SECRET", ""),
+        "OAUTH_APP_TYPE": app_type,
         "is_client_id_env": env_client_id is not None,
         "is_client_secret_env": env_client_secret is not None,
         # Default appearance settings
@@ -213,6 +220,19 @@ async def delete_account(account_id: int, session: Session = Depends(get_session
     session.commit()
     return {"message": "Account deleted"}
 
+class AccountToggleRequest(BaseModel):
+    is_active: bool
+
+@app.patch("/accounts/{account_id}/toggle-active")
+async def toggle_account_active(account_id: int, request: AccountToggleRequest, session: Session = Depends(get_session)):
+    account = session.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    account.is_active = request.is_active
+    session.add(account)
+    session.commit()
+    return {"message": "Account status updated", "is_active": account.is_active}
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 @app.get("/")
@@ -221,18 +241,26 @@ async def root(request: Request):
     return FileResponse(os.path.join(BASE_DIR, "../frontend/index.html"))
 
 app.mount("/styles", StaticFiles(directory=os.path.join(BASE_DIR, "../frontend/styles")), name="styles")
+app.mount("/js", StaticFiles(directory=os.path.join(BASE_DIR, "../frontend/js")), name="js")
+
+import hashlib
+
+def generate_pkce_verifier():
+    return secrets.token_urlsafe(64)
+
+def generate_pkce_challenge(verifier):
+    digest = hashlib.sha256(verifier.encode('utf-8')).digest()
+    return base64.urlsafe_b64encode(digest).decode('utf-8').replace('=', '')
 
 @app.get("/auth/login")
-async def login(request: Request):
+async def login(request: Request, session: Session = Depends(get_session)):
     client_config = get_client_config()
+    app_type = client_config["web"].get("app_type", "web")
     redirect_uri = str(request.url_for("auth_callback"))
     # In some environments (like behind a proxy), url_for might return http instead of https
     if os.getenv("FORCE_HTTPS"):
         redirect_uri = redirect_uri.replace("http://", "https://")
     
-    # Manually build authorization URL to avoid PKCE 'Missing code verifier' issues
-    # we're not using a stateful session to store the code_verifier, and 
-    # for 'Web Server' apps with a client_secret, PKCE is optional.
     params = {
         "client_id": client_config["web"]["client_id"],
         "redirect_uri": redirect_uri,
@@ -243,6 +271,22 @@ async def login(request: Request):
         "include_granted_scopes": "true",
         "state": secrets.token_hex(16)
     }
+
+    if app_type == "desktop":
+        verifier = generate_pkce_verifier()
+        challenge = generate_pkce_challenge(verifier)
+        # Store verifier in DB for callback
+        # Use a setting to store it temporarily
+        setting = session.exec(select(Setting).where(Setting.key == "LAST_OAUTH_VERIFIER")).first()
+        if not setting:
+            setting = Setting(key="LAST_OAUTH_VERIFIER", value=verifier)
+        else:
+            setting.value = verifier
+        session.add(setting)
+        session.commit()
+        
+        params["code_challenge"] = challenge
+        params["code_challenge_method"] = "S256"
     
     auth_url = f"{client_config['web']['auth_uri']}?{urllib.parse.urlencode(params)}"
     return RedirectResponse(auth_url)
@@ -250,20 +294,27 @@ async def login(request: Request):
 @app.get("/auth/callback")
 async def auth_callback(request: Request, code: str, state: str, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
     client_config = get_client_config()
+    app_type = client_config["web"].get("app_type", "web")
     redirect_uri = str(request.url_for("auth_callback"))
     if os.getenv("FORCE_HTTPS"):
         redirect_uri = redirect_uri.replace("http://", "https://")
     
-    # Manually exchange code for tokens to avoid PKCE 'Missing code verifier' errors
-    # google-auth-oauthlib's Flow requires stateful session for PKCE which we don't have
     token_url = client_config["web"]["token_uri"]
     data = {
         "code": code,
         "client_id": client_config["web"]["client_id"],
-        "client_secret": client_config["web"]["client_secret"],
         "redirect_uri": redirect_uri,
         "grant_type": "authorization_code",
     }
+
+    if app_type == "web":
+        data["client_secret"] = client_config["web"]["client_secret"]
+    else:
+        # Desktop mode using PKCE
+        verifier_setting = session.exec(select(Setting).where(Setting.key == "LAST_OAUTH_VERIFIER")).first()
+        if not verifier_setting:
+            raise HTTPException(status_code=400, detail="Missing code verifier for PKCE exchange")
+        data["code_verifier"] = verifier_setting.value
     
     async with httpx.AsyncClient() as client:
         token_response = await client.post(token_url, data=data)
@@ -278,7 +329,7 @@ async def auth_callback(request: Request, code: str, state: str, background_task
         refresh_token=token_data.get("refresh_token"),
         token_uri=token_url,
         client_id=client_config["web"]["client_id"],
-        client_secret=client_config["web"]["client_secret"],
+        client_secret=client_config["web"].get("client_secret") if app_type == "web" else None,
         scopes=SCOPES
     )
     
@@ -1209,12 +1260,15 @@ async def empty_label(account_id: int, label_id: str, session: Session = Depends
 @app.get("/unified/messages")
 async def unified_messages(label: str = None, page_token: str = None, refresh: bool = False, session: Session = Depends(get_session)):
     cache_key = f"unified_messages_{label}_{page_token}"
+    active_ids = {a.id for a in session.exec(select(Account).where(Account.is_active)).all()}
+    
     if not refresh:
         cached_result = cache.get(cache_key)
         if cached_result:
-            return cached_result
+            filtered_messages = [m for m in cached_result["messages"] if m["accountId"] in active_ids]
+            return {"messages": filtered_messages, "nextPageToken": cached_result["nextPageToken"]}
 
-    accounts = session.exec(select(Account).where(Account.is_active)).all()
+    accounts = session.exec(select(Account)).all()
     
     all_messages = []
     
@@ -1271,7 +1325,9 @@ async def unified_messages(label: str = None, page_token: str = None, refresh: b
     all_messages.sort(key=lambda x: x["internalDate"], reverse=True)
     response_data = {"messages": all_messages, "nextPageToken": next_page_token_str}
     cache.set(cache_key, response_data, expire=300)
-    return response_data
+    
+    filtered_messages = [m for m in all_messages if m["accountId"] in active_ids]
+    return {"messages": filtered_messages, "nextPageToken": next_page_token_str}
 
 @app.get("/unified/search")
 async def unified_search(
@@ -1281,11 +1337,14 @@ async def unified_search(
     session: Session = Depends(get_session)
 ):
     cache_key = f"unified_search_{q}_{page_token}_{max_results}"
+    active_ids = {a.id for a in session.exec(select(Account).where(Account.is_active)).all()}
+    
     cached_result = cache.get(cache_key)
     if cached_result:
-        return cached_result
+        filtered_messages = [m for m in cached_result["messages"] if m["accountId"] in active_ids]
+        return {"messages": filtered_messages, "nextPageToken": cached_result["nextPageToken"]}
 
-    accounts = session.exec(select(Account).where(Account.is_active)).all()
+    accounts = session.exec(select(Account)).all()
     all_messages = []
     
     # Decode page_token if provided (it's a base64-encoded JSON mapping account_id -> individual token)
@@ -1346,7 +1405,9 @@ async def unified_search(
     all_messages.sort(key=lambda x: x["internalDate"], reverse=True)
     response_data = {"messages": all_messages, "nextPageToken": next_page_token_str}
     cache.set(cache_key, response_data, expire=300)
-    return response_data
+    
+    filtered_messages = [m for m in all_messages if m["accountId"] in active_ids]
+    return {"messages": filtered_messages, "nextPageToken": next_page_token_str}
 
 @app.delete("/unified/labels/{label_id}/empty")
 async def empty_unified_label(label_id: str, session: Session = Depends(get_session)):
