@@ -241,6 +241,7 @@ async def root(request: Request):
     return FileResponse(os.path.join(BASE_DIR, "../frontend/index.html"))
 
 app.mount("/styles", StaticFiles(directory=os.path.join(BASE_DIR, "../frontend/styles")), name="styles")
+app.mount("/js", StaticFiles(directory=os.path.join(BASE_DIR, "../frontend/js")), name="js")
 
 import hashlib
 
