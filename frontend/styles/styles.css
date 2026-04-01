@@ -873,6 +873,10 @@ input:checked + .slider:before {
     height: 32px;
 }
 
+.toolbar-btn i {
+    pointer-events: none;
+}
+
 .toolbar-btn:hover {
     background: #eef1f4;
     border-color: #dae0e5;

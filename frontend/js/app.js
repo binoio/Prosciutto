@@ -1395,23 +1395,105 @@ window.toggleComposeField = function(field) {
     if (toggle) toggle.style.display = 'none';
 }
 
-window.execCommand = function(command, value = null) {
-    document.execCommand(command, false, value);
+window.doComposerAction = function(command, value = null) {
+    const isHtml = document.getElementById('panel-compose-is-html');
+    const textArea = document.getElementById('panel-compose-body');
     const htmlDiv = document.getElementById('panel-compose-body-html');
-    if (htmlDiv) htmlDiv.focus();
+    
+    const useHtml = isHtml && isHtml.checked;
+    
+    if (useHtml) {
+        if (htmlDiv) {
+            htmlDiv.focus();
+            document.execCommand(command, false, value);
+        }
+    } else if (textArea) {
+        // 1. Capture current selection state
+        const start = textArea.selectionStart;
+        const end = textArea.selectionEnd;
+        const text = textArea.value;
+        const selectedText = text.substring(start, end);
+        
+        let replacement = '';
+        let startOffset = 0;
+
+        switch (command) {
+            case 'bold':
+                replacement = `**${selectedText || 'bold text'}**`;
+                startOffset = 2;
+                break;
+            case 'italic':
+                replacement = `*${selectedText || 'italic text'}*`;
+                startOffset = 1;
+                break;
+            case 'underline':
+                replacement = `_${selectedText || 'underline text'}_`;
+                startOffset = 1;
+                break;
+            case 'insertUnorderedList':
+                replacement = `- ${selectedText || 'list item'}`;
+                startOffset = 2;
+                break;
+            case 'insertOrderedList':
+                replacement = `1. ${selectedText || 'list item'}`;
+                startOffset = 3;
+                break;
+            case 'outdent':
+                replacement = selectedText.replace(/^ {1,4}/gm, '');
+                break;
+            case 'indent':
+                replacement = selectedText ? selectedText.replace(/^/gm, '    ') : '    ';
+                break;
+            case 'createLink':
+                replacement = `[${selectedText || 'link text'}](${value || 'http://url'})`;
+                startOffset = 1;
+                break;
+            case 'unlink':
+                replacement = selectedText.replace(/^\[(.*?)\]\(.*?\)$/, '$1');
+                break;
+            default:
+                replacement = selectedText;
+        }
+
+        // 2. Update the text area value
+        textArea.value = text.substring(0, start) + replacement + text.substring(end);
+        
+        // 3. Restore focus and selection explicitly
+        textArea.focus();
+        if (selectedText || command === 'indent' || command === 'outdent') {
+            textArea.setSelectionRange(start, start + replacement.length);
+        } else {
+            const innerStart = start + startOffset;
+            const innerEnd = start + replacement.length - (command === 'bold' || command === 'italic' || command === 'underline' ? startOffset : 0);
+            textArea.setSelectionRange(innerStart, innerEnd);
+        }
+    }
 }
 
 window.createLink = function() {
-    const url = prompt("Enter the URL:");
-    if (url) {
-        window.execCommand('createLink', url);
+    const textArea = document.getElementById('panel-compose-body');
+    const isHtml = document.getElementById('panel-compose-is-html');
+    
+    if (isHtml && isHtml.checked) {
+        const url = prompt("Enter the URL:");
+        if (url) {
+            document.execCommand('createLink', false, url);
+        }
+    } else if (textArea) {
+        const start = textArea.selectionStart;
+        const end = textArea.selectionEnd;
+        const url = prompt("Enter the URL:");
+        if (url) {
+            textArea.focus();
+            textArea.setSelectionRange(start, end);
+            window.doComposerAction('createLink', url);
+        }
     }
 }
 
 function toggleComposeFormat(checkbox) {
     const htmlDiv = document.getElementById('panel-compose-body-html');
     const textArea = document.getElementById('panel-compose-body');
-    const markupBtns = document.getElementById('panel-compose-markup-btns');
     
     if (checkbox.checked) {
         // Switch to HTML
@@ -1422,8 +1504,6 @@ function toggleComposeFormat(checkbox) {
         
         textArea.classList.remove('display-block');
         textArea.classList.add('display-none');
-        
-        if (markupBtns) markupBtns.classList.remove('display-none');
     } else {
         // Switch to Text
         let text = htmlDiv.innerHTML.replace(/<br\s*[\/]?>/gi, '\n').replace(/<\/p>/gi, '\n\n').replace(/<\/div>/gi, '\n');
@@ -1436,8 +1516,6 @@ function toggleComposeFormat(checkbox) {
         
         htmlDiv.classList.remove('display-block');
         htmlDiv.classList.add('display-none');
-        
-        if (markupBtns) markupBtns.classList.add('display-none');
     }
 }
 
@@ -1527,19 +1605,19 @@ function renderComposerInPanel(id, accId, action) {
                     <input type="text" id="panel-compose-subject" value="${subject.replace(/"/g, '&quot;')}">
                 </div>
                 <div id="panel-compose-toolbar" class="composer-toolbar justify-between">
-                    <div id="panel-compose-markup-btns" class="display-flex gap-5 ${useHtml ? '' : 'display-none'}">
-                        <button type="button" class="toolbar-btn" onclick="execCommand('bold')" title="Bold"><i class="fa-solid fa-bold"></i></button>
-                        <button type="button" class="toolbar-btn" onclick="execCommand('italic')" title="Italic"><i class="fa-solid fa-italic"></i></button>
-                        <button type="button" class="toolbar-btn" onclick="execCommand('underline')" title="Underline"><i class="fa-solid fa-underline"></i></button>
+                    <div id="panel-compose-markup-btns" class="display-flex gap-5">
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('bold'); return false;" title="Bold"><i class="fa-solid fa-bold"></i></button>
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('italic'); return false;" title="Italic"><i class="fa-solid fa-italic"></i></button>
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('underline'); return false;" title="Underline"><i class="fa-solid fa-underline"></i></button>
                         <div class="toolbar-divider"></div>
-                        <button type="button" class="toolbar-btn" onclick="execCommand('insertUnorderedList')" title="Bullet List"><i class="fa-solid fa-list-ul"></i></button>
-                        <button type="button" class="toolbar-btn" onclick="execCommand('insertOrderedList')" title="Numbered List"><i class="fa-solid fa-list-ol"></i></button>
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('insertUnorderedList'); return false;" title="Bullet List"><i class="fa-solid fa-list-ul"></i></button>
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('insertOrderedList'); return false;" title="Numbered List"><i class="fa-solid fa-list-ol"></i></button>
                         <div class="toolbar-divider"></div>
-                        <button type="button" class="toolbar-btn" onclick="execCommand('outdent')" title="Outdent"><i class="fa-solid fa-outdent"></i></button>
-                        <button type="button" class="toolbar-btn" onclick="execCommand('indent')" title="Indent"><i class="fa-solid fa-indent"></i></button>
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('outdent'); return false;" title="Outdent"><i class="fa-solid fa-outdent"></i></button>
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('indent'); return false;" title="Indent"><i class="fa-solid fa-indent"></i></button>
                         <div class="toolbar-divider"></div>
-                        <button type="button" class="toolbar-btn" onclick="createLink()" title="Insert Link"><i class="fa-solid fa-link"></i></button>
-                        <button type="button" class="toolbar-btn" onclick="execCommand('unlink')" title="Remove Link"><i class="fa-solid fa-link-slash"></i></button>
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.createLink(); return false;" title="Insert Link"><i class="fa-solid fa-link"></i></button>
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('unlink'); return false;" title="Remove Link"><i class="fa-solid fa-link-slash"></i></button>
                     </div>
                     <div class="display-flex align-center">
                         <label class="switch">
@@ -1968,19 +2046,19 @@ function renderNewComposerInPanel(accId) {
                     <input type="text" id="panel-compose-subject" value="">
                 </div>
                 <div id="panel-compose-toolbar" class="composer-toolbar justify-between">
-                    <div id="panel-compose-markup-btns" class="display-flex gap-5 ${useHtml ? '' : 'display-none'}">
-                        <button type="button" class="toolbar-btn" onclick="execCommand('bold')" title="Bold"><i class="fa-solid fa-bold"></i></button>
-                        <button type="button" class="toolbar-btn" onclick="execCommand('italic')" title="Italic"><i class="fa-solid fa-italic"></i></button>
-                        <button type="button" class="toolbar-btn" onclick="execCommand('underline')" title="Underline"><i class="fa-solid fa-underline"></i></button>
+                    <div id="panel-compose-markup-btns" class="display-flex gap-5">
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('bold'); return false;" title="Bold"><i class="fa-solid fa-bold"></i></button>
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('italic'); return false;" title="Italic"><i class="fa-solid fa-italic"></i></button>
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('underline'); return false;" title="Underline"><i class="fa-solid fa-underline"></i></button>
                         <div class="toolbar-divider"></div>
-                        <button type="button" class="toolbar-btn" onclick="execCommand('insertUnorderedList')" title="Bullet List"><i class="fa-solid fa-list-ul"></i></button>
-                        <button type="button" class="toolbar-btn" onclick="execCommand('insertOrderedList')" title="Numbered List"><i class="fa-solid fa-list-ol"></i></button>
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('insertUnorderedList'); return false;" title="Bullet List"><i class="fa-solid fa-list-ul"></i></button>
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('insertOrderedList'); return false;" title="Numbered List"><i class="fa-solid fa-list-ol"></i></button>
                         <div class="toolbar-divider"></div>
-                        <button type="button" class="toolbar-btn" onclick="execCommand('outdent')" title="Outdent"><i class="fa-solid fa-outdent"></i></button>
-                        <button type="button" class="toolbar-btn" onclick="execCommand('indent')" title="Indent"><i class="fa-solid fa-indent"></i></button>
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('outdent'); return false;" title="Outdent"><i class="fa-solid fa-outdent"></i></button>
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('indent'); return false;" title="Indent"><i class="fa-solid fa-indent"></i></button>
                         <div class="toolbar-divider"></div>
-                        <button type="button" class="toolbar-btn" onclick="createLink()" title="Insert Link"><i class="fa-solid fa-link"></i></button>
-                        <button type="button" class="toolbar-btn" onclick="execCommand('unlink')" title="Remove Link"><i class="fa-solid fa-link-slash"></i></button>
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.createLink(); return false;" title="Insert Link"><i class="fa-solid fa-link"></i></button>
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('unlink'); return false;" title="Remove Link"><i class="fa-solid fa-link-slash"></i></button>
                     </div>
                     <div class="display-flex align-center">
                         <label class="switch">
