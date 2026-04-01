@@ -90,9 +90,9 @@
                             <div class="form-row">
                                 <label>Date Range</label>
                                 <div class="adv-search-date-range">
-                                    <input type="date" id="adv-date-after" style="flex: 1;">
+                                    <input type="date" id="adv-date-after" class="flex-1">
                                     <span class="adv-search-date-sep">to</span>
-                                    <input type="date" id="adv-date-before" style="flex: 1;">
+                                    <input type="date" id="adv-date-before" class="flex-1">
                                 </div>
                             </div>
                             <div class="form-row">
@@ -100,8 +100,8 @@
                                 <input type="checkbox" id="adv-has-attachment">
                             </div>
                             <div class="form-actions">
-                                <button class="action-btn" onclick="clearAdvancedSearch()" style="border-radius: 4px; padding: 8px 15px;">Clear</button>
-                                <button class="compose-btn" style="width: auto; padding: 8px 25px; border-radius: 4px;" onclick="performAdvancedSearch()">Search</button>
+                                <button class="action-btn btn-inline" onclick="clearAdvancedSearch()">Clear</button>
+                                <button class="compose-btn btn-inline" onclick="performAdvancedSearch()">Search</button>
                             </div>
                         </div>
                     </div>
@@ -114,16 +114,16 @@
                 <div id="message-list-header">
                     <input type="checkbox" id="multi-select-checkbox" onclick="toggleAllMessages(this)">
 
-                    <div class="column-header" style="width: var(--sender-width, 200px); flex-shrink: 0;" onclick="sortMessages('from')">
+                    <div class="column-header col-sender flex-shrink-0" onclick="sortMessages('from')">
                         From <span id="sort-from" class="sort-icon"></span>
                         <div class="resizer" data-column="sender"></div>
                     </div>
-                    
-                    <div class="column-header" style="flex: 1;" onclick="sortMessages('subject')">
+
+                    <div class="column-header flex-1" onclick="sortMessages('subject')">
                         Subject <span id="sort-subject" class="sort-icon"></span>
                     </div>
-                    
-                    <div class="column-header" style="width: 100px; justify-content: flex-end; flex-shrink: 0;" onclick="sortMessages('internalDate')">
+
+                    <div class="column-header justify-end flex-shrink-0 col-date" onclick="sortMessages('internalDate')">
                         Date <span id="sort-internalDate" class="sort-icon"></span>
                     </div>
 
@@ -140,13 +140,13 @@
                 </div>
                 <div id="mailbox-banner" class="mailbox-banner-container">
                     <span id="banner-text">Messages in Trash will be automatically deleted after 30 days.</span>
-                    <button class="compose-btn" id="empty-mailbox-btn" style="width: auto; padding: 5px 15px; background-color: var(--text-gray);" onclick="emptyCurrentMailbox()">Empty Trash Now</button>
+                    <button class="compose-btn btn-inline text-gray" id="empty-mailbox-btn" onclick="emptyCurrentMailbox()">Empty Trash Now</button>
                 </div>
                 <div id="message-list">
                     <!-- Messages will be loaded here -->
                 </div>
                 <div class="load-more-container">
-                    <button id="load-more-btn" class="compose-btn" style="width: auto; padding: 10px 30px; display: none;" onclick="loadMore()">Load More</button>
+                    <button id="load-more-btn" class="compose-btn btn-large display-none" onclick="loadMore()">Load More</button>
                 </div>
             </div>
             
@@ -161,7 +161,7 @@
         <div class="modal-container">
             <div class="modal-header">
                 <h3>Settings</h3>
-                <span style="cursor: pointer;" onclick="closeSettings()">✖</span>
+                <span class="cursor-pointer" onclick="closeSettings()">✖</span>
             </div>
             <div class="modal-body">
                 <div class="modal-tabs">
@@ -176,29 +176,29 @@
                     <!-- General Tab -->
                     <div id="tab-general" class="tab-panel active">
                         <h4>Behavior</h4>
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <input type="checkbox" id="setting-compose-window" style="width: auto;" onchange="saveAllSettings()">
+                        <div class="display-flex align-center gap-10">
+                            <input type="checkbox" id="setting-compose-window" class="checkbox-inline" onchange="saveAllSettings()">
                             <label for="setting-compose-window">Compose new messages in their own window</label>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
-                            <input type="checkbox" id="setting-warn-delete" style="width: auto;" onchange="saveAllSettings()">
+                        <div class="display-flex align-center gap-10 mt-10">
+                            <input type="checkbox" id="setting-warn-delete" class="checkbox-inline" onchange="saveAllSettings()">
                             <label for="setting-warn-delete">Warn before permanently deleting messages</label>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
-                            <input type="checkbox" id="setting-compose-html" style="width: auto;" onchange="saveAllSettings()">
+                        <div class="display-flex align-center gap-10 mt-10">
+                            <input type="checkbox" id="setting-compose-html" class="checkbox-inline" onchange="saveAllSettings()">
                             <label for="setting-compose-html">Compose new messages as HTML</label>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
-                            <input type="checkbox" id="setting-mark-read" style="width: auto;" onchange="saveAllSettings()">
+                        <div class="display-flex align-center gap-10 mt-10">
+                            <input type="checkbox" id="setting-mark-read" class="checkbox-inline" onchange="saveAllSettings()">
                             <label for="setting-mark-read">Mark messages as read automatically after 3 seconds</label>
                         </div>
                     </div>
 
                     <!-- Accounts Tab -->
                     <div id="tab-accounts" class="tab-panel">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <div class="display-flex justify-between align-center mb-20">
                             <h4>Connected Accounts</h4>
-                            <button class="compose-btn" style="width: auto; padding: 8px 15px;" onclick="addAccount()">Add Account</button>
+                            <button class="compose-btn btn-inline" onclick="addAccount()">Add Account</button>
                         </div>
                         <div id="accounts-list-settings">
                             <!-- Accounts listed here -->
@@ -208,7 +208,7 @@
                     <!-- Appearance Tab -->
                     <div id="tab-appearance" class="tab-panel">
                         <h4>Theme</h4>
-                        <div class="form-group" style="border: none;">
+                        <div class="form-group border-none">
                             <select id="setting-theme" onchange="saveAllSettings()">
                                 <option value="light">Light</option>
                                 <option value="dark">Dark</option>
@@ -216,17 +216,17 @@
                             </select>
                         </div>
                         
-                        <h4 style="margin-top: 30px;">Sidebar</h4>
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <input type="checkbox" id="setting-disclosure" style="width: auto;" onchange="saveAllSettings()">
+                        <h4 class="mt-30">Sidebar</h4>
+                        <div class="display-flex align-center gap-10">
+                            <input type="checkbox" id="setting-disclosure" class="checkbox-inline" onchange="saveAllSettings()">
                             <label for="setting-disclosure">Show disclosure triangles for single account</label>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
-                            <input type="checkbox" id="setting-starred" style="width: auto;" onchange="saveAllSettings()">
+                        <div class="display-flex align-center gap-10 mt-10">
+                            <input type="checkbox" id="setting-starred" class="checkbox-inline" onchange="saveAllSettings()">
                             <label for="setting-starred">Show Starred mailbox</label>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
-                            <input type="checkbox" id="setting-collapse-sidebar" style="width: auto;" onchange="saveAllSettings()">
+                        <div class="display-flex align-center gap-10 mt-10">
+                            <input type="checkbox" id="setting-collapse-sidebar" class="checkbox-inline" onchange="saveAllSettings()">
                             <label for="setting-collapse-sidebar">Always Collapse the Sidebar</label>
                         </div>
                     </div>
@@ -234,12 +234,12 @@
                     <!-- Privacy Tab -->
                     <div id="tab-privacy" class="tab-panel">
                         <h4>Content Privacy</h4>
-                        <p style="font-size: 13px; color: var(--text-gray); margin-bottom: 20px; line-height: 1.5;">
+                        <p class="font-13 text-gray mb-20 line-height-1-5">
                             Remote images can be used by senders to track when and where you open an email (tracking pixels). 
                             Disabling them can improve your privacy.
                         </p>
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <input type="checkbox" id="setting-remote-images" style="width: auto;" onchange="saveAllSettings()">
+                        <div class="display-flex align-center gap-10">
+                            <input type="checkbox" id="setting-remote-images" class="checkbox-inline" onchange="saveAllSettings()">
                             <label for="setting-remote-images">Always display external images</label>
                         </div>
                     </div>
@@ -247,49 +247,49 @@
                     <!-- Contacts Tab -->
                     <div id="tab-contacts" class="tab-panel">
                         <h4>Recent Activity</h4>
-                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
-                            <input type="checkbox" id="setting-autocomplete-recents" style="width: auto;" onchange="saveAllSettings()">
-                            <label for="setting-autocomplete-recents" style="color: var(--text-gray);">Auto-complete from Recents</label>
+                        <div class="display-flex align-center gap-10 mb-20">
+                            <input type="checkbox" id="setting-autocomplete-recents" class="checkbox-inline" onchange="saveAllSettings()">
+                            <label for="setting-autocomplete-recents" class="text-gray">Auto-complete from Recents</label>
                         </div>
 
                         <h4>Auto-complete from Account Contacts</h4>
-                        <div id="contacts-accounts-list" style="margin-top: 10px;">
+                        <div id="contacts-accounts-list" class="mt-10">
                             <!-- Account toggles will be rendered here -->
                         </div>
 
-                        <h4 style="margin-top: 25px;">Maintenance</h4>
-                        <p style="font-size: 13px; color: var(--text-gray); margin-bottom: 10px;">If your contacts are out of sync or you want to free up space, you can clear the local cache. Contacts will be re-synced from Google on next refresh.</p>
-                        <button class="remove-btn" style="background-color: var(--text-gray);" onclick="clearLocalContacts()">Clear Local Contact Cache</button>
+                        <h4 class="mt-25">Maintenance</h4>
+                        <p class="font-13 text-gray mb-10">If your contacts are out of sync or you want to free up space, you can clear the local cache. Contacts will be re-synced from Google on next refresh.</p>
+                        <button class="remove-btn text-gray" onclick="clearLocalContacts()">Clear Local Contact Cache</button>
                     </div>
 
                     <!-- Advanced Tab -->
                     <div id="tab-advanced" class="tab-panel">
                         <h4>Google API Configuration</h4>
                         <div class="form-group">
-                            <label>Google Client ID <span id="client-id-env-badge" class="env-badge" style="display:none">Set via .env</span></label>
+                            <label>Google Client ID <span id="client-id-env-badge" class="env-badge display-none">Set via .env</span></label>
                             <input type="text" id="client-id" placeholder="Client ID" onchange="saveAllSettings()">
                         </div>
                         <div class="form-group" id="client-secret-group">
-                            <label>Google Client Secret <span id="client-secret-env-badge" class="env-badge" style="display:none">Set via .env</span></label>
+                            <label>Google Client Secret <span id="client-secret-env-badge" class="env-badge display-none">Set via .env</span></label>
                             <input type="password" id="client-secret" placeholder="Client Secret" onchange="saveAllSettings()">
                         </div>
-                        <div id="credentials-feedback" style="margin-bottom: 20px; font-size: 13px;"></div>
+                        <div id="credentials-feedback" class="mb-20 font-13"></div>
 
-                        <div style="background-color: var(--bg-light-gray); padding: 15px; border-radius: 4px; margin-bottom: 20px; font-size: 13px;">
-                            <p style="margin-bottom: 5px;"><b>Status:</b> <span id="stats-status" style="color: green;">Connected</span></p>
+                        <div class="p-15 radius-4 mb-20 font-13 bg-light-gray-area">
+                            <p class="mb-5"><b>Status:</b> <span id="stats-status" class="text-green">Connected</span></p>
                             <p>To enable permanent deletion in Trash/Spam folders, set <code>ENABLE_DELETION_SCOPE=true</code> in your <code>.env</code> file.</p>
                         </div>
 
                         <h4>System Statistics</h4>
-                        <div id="system-stats" style="font-size: 13px; color: var(--text-gray); display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: var(--bg-white); border: 1px solid var(--border-gray); padding: 15px; border-radius: 4px;">
-                            <div>Connected Accounts:</div> <div id="stat-accounts" style="color: var(--text-black);">-</div>
-                            <div>Recent Interactions:</div> <div id="stat-recents" style="color: var(--text-black);">-</div>
-                            <div>Google Contacts:</div> <div id="stat-contacts" style="color: var(--text-black);">-</div>
-                            <div>Database Size:</div> <div id="stat-db-size" style="color: var(--text-black);">-</div>
-                            <div>Message Cache Size:</div> <div id="stat-cache-size" style="color: var(--text-black);">-</div>
-                            <div>Full Deletion Scope:</div> <div id="stat-deletion" style="color: var(--text-black);">-</div>
+                        <div id="system-stats" class="font-13 text-gray display-grid grid-2 gap-10 p-15 radius-4 bg-white-area border-gray-area">
+                            <div>Connected Accounts:</div> <div id="stat-accounts" class="text-black">-</div>
+                            <div>Recent Interactions:</div> <div id="stat-recents" class="text-black">-</div>
+                            <div>Google Contacts:</div> <div id="stat-contacts" class="text-black">-</div>
+                            <div>Database Size:</div> <div id="stat-db-size" class="text-black">-</div>
+                            <div>Message Cache Size:</div> <div id="stat-cache-size" class="text-black">-</div>
+                            <div>Full Deletion Scope:</div> <div id="stat-deletion" class="text-black">-</div>
                         </div>
-                        <button class="remove-btn" style="margin-top: 10px; background-color: var(--text-gray); width: auto; padding: 8px 15px;" onclick="loadStats()">Refresh Statistics</button>
+                        <button class="remove-btn text-gray btn-inline mt-10" onclick="loadStats()">Refresh Statistics</button>
                     </div>
                 </div>
             </div>

@@ -64,6 +64,59 @@ async function init() {
     } else {
         loadMailbox('INBOX');
     }
+    setupEventDelegation();
+}
+
+/**
+ * Setup event delegation for the message list to avoid multiple listeners
+ */
+function setupEventDelegation() {
+    const list = document.getElementById('message-list');
+    if (!list) return;
+
+    list.addEventListener('click', (e) => {
+        const row = e.target.closest('.message-item');
+        if (!row) return;
+
+        // Handle checkbox clicks
+        if (e.target.classList.contains('message-checkbox')) {
+            e.stopPropagation();
+            updateSelectionCount();
+            return;
+        }
+
+        // Check if a hover button was clicked
+        const actionBtn = e.target.closest('.hover-action-btn');
+        if (actionBtn) {
+            e.stopPropagation();
+            const msgId = row.dataset.id;
+            const accId = row.dataset.accid;
+            const isUnread = row.querySelector('.unread-dot').classList.contains('invisible') === false;
+
+            if (actionBtn.classList.contains('toggle-read')) {
+                toggleReadStatus(msgId, accId, isUnread);
+            } else if (actionBtn.classList.contains('archive')) {
+                archiveMessage(msgId, accId);
+            } else if (actionBtn.classList.contains('delete')) {
+                trashMessage(msgId, accId);
+            }
+            return;
+        }
+
+        // Default: show message
+        const msgId = row.dataset.id;
+        const accId = row.dataset.accid;
+        showMessage(msgId, accId);
+    });
+
+    list.addEventListener('dblclick', (e) => {
+        const row = e.target.closest('.message-item');
+        if (row) {
+            const msgId = row.dataset.id;
+            const accId = row.dataset.accid;
+            openMessageInNewWindow(msgId, accId);
+        }
+    });
 }
 
 /**
@@ -279,8 +332,8 @@ async function loadLabels(activeAccounts) {
                 <i class="fa-solid fa-folder"></i>
                 <i class="fa-solid fa-arrow-right label-expand-icon"></i>
             </div>
-            <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${acc.email}</span>
-            <i class="fa-solid fa-plus" style="margin-left: auto; cursor: pointer; opacity: 0.6; padding: 2px 5px;" onclick="createNewLabel(event, ${acc.id}, '${acc.email}')" title="New Label"></i>
+            <span class="flex-1 text-ellipsis">${acc.email}</span>
+            <i class="fa-solid fa-plus ml-auto cursor-pointer opacity-06 p-2-5" onclick="createNewLabel(event, ${acc.id}, '${acc.email}')" title="New Label"></i>
         `;
         container.appendChild(accItem);
 
@@ -369,13 +422,11 @@ function renderAccountsInSettings() {
     list.innerHTML = '';
     accounts.forEach(acc => {
         const row = document.createElement('div');
-        row.className = 'account-row';
-        row.style.display = 'flex';
-        row.style.alignItems = 'center';
+        row.className = 'account-row display-flex align-center';
         row.innerHTML = `
-            <span style="flex: 1; ${!acc.is_active ? 'text-decoration: line-through; color: var(--text-gray);' : ''}">${acc.email}</span>
-            <label style="display: flex; align-items: center; gap: 5px; margin-right: 15px; font-size: 13px; color: var(--text-gray); cursor: pointer;">
-                <input type="checkbox" style="width: auto; margin: 0;" ${acc.is_active ? 'checked' : ''} onchange="toggleAccountActive(${acc.id}, this.checked)">
+            <span class="flex-1 ${!acc.is_active ? 'text-strike text-gray' : ''}">${acc.email}</span>
+            <label class="display-flex align-center gap-5 mr-15 font-13 text-gray cursor-pointer">
+                <input type="checkbox" class="checkbox-inline" ${acc.is_active ? 'checked' : ''} onchange="toggleAccountActive(${acc.id}, this.checked)">
                 Active
             </label>
             <button class="remove-btn" onclick="removeAccount(${acc.id}, '${acc.email}')">Remove</button>
@@ -426,19 +477,15 @@ function renderContactsAccounts() {
     accounts.forEach(acc => {
         const isChecked = enabledIds.includes(acc.id.toString());
         const row = document.createElement('div');
-        row.style.display = 'flex';
-        row.style.justifyContent = 'space-between';
-        row.style.alignItems = 'center';
-        row.style.padding = '8px 0';
-        row.style.borderBottom = '1px solid var(--border-gray)';
+        row.className = 'display-flex justify-between align-center p-8-0 border-bottom-gray';
         row.innerHTML = `
-            <span style="font-size: 14px;">${acc.email}</span>
-            <input type="checkbox" class="contact-account-toggle" data-accid="${acc.id}" style="width: auto;" ${isChecked ? 'checked' : ''} onchange="saveAllSettings()">
+            <span class="font-14">${acc.email}</span>
+            <input type="checkbox" class="contact-account-toggle w-auto" data-accid="${acc.id}" ${isChecked ? 'checked' : ''} onchange="saveAllSettings()">
         `;
         list.appendChild(row);
     });
     if (accounts.length === 0) {
-        list.innerHTML = '<p style="color: var(--text-gray); font-size: 13px;">No accounts connected.</p>';
+        list.innerHTML = '<p class="text-gray font-13">No accounts connected.</p>';
     }
 }
 
@@ -547,7 +594,7 @@ async function loadMailbox(label, append = false, refresh = false) {
         currentLabel = label;
         currentAccountId = null;
         nextPageToken = null;
-        document.getElementById('message-list').innerHTML = '';
+        renderSkeletons();
         document.getElementById('view-name').innerText = label === '' ? 'All Mail' : label.charAt(0) + label.slice(1).toLowerCase();
         document.getElementById('search-input').value = '';
         hideMessageDetail();
@@ -584,7 +631,7 @@ async function loadAccountMailbox(accId, email, label, append = false, refresh =
         currentLabel = label;
         currentAccountId = accId;
         nextPageToken = null;
-        document.getElementById('message-list').innerHTML = '';
+        renderSkeletons();
         document.getElementById('view-name').innerText = `${email} - ${label === '' ? 'All Mail' : label}`;
         document.getElementById('search-input').value = '';
         hideMessageDetail();
@@ -705,7 +752,7 @@ async function performSearch(append = false, refresh = false) {
     if (!append) {
         currentLabel = 'SEARCH';
         nextPageToken = null;
-        document.getElementById('message-list').innerHTML = '<div style="padding: 20px; text-align: center;">Searching...</div>';
+        renderSkeletons();
         document.getElementById('view-name').innerText = `Search: ${query}`;
         hideMessageDetail();
 
@@ -791,6 +838,67 @@ document.addEventListener('click', (e) => {
 });
 
 /**
+ * Render skeleton loaders for message list
+ */
+function renderSkeletons() {
+    const list = document.getElementById('message-list');
+    if (!list) return;
+    
+    list.innerHTML = '';
+    const fragment = document.createDocumentFragment();
+    for (let i = 0; i < 10; i++) {
+        const row = document.createElement('div');
+        row.className = 'skeleton-row';
+        row.innerHTML = `
+            <div class="skeleton-dot"></div>
+            <div class="skeleton-check"></div>
+            <div class="skeleton-sender"></div>
+            <div class="skeleton-snippet"></div>
+            <div class="skeleton-date"></div>
+            <div class="shimmer"></div>
+        `;
+        fragment.appendChild(row);
+    }
+    list.appendChild(fragment);
+}
+
+/**
+ * Create a single message row element
+ */
+function createMessageRow(msg) {
+    const item = document.createElement('div');
+    item.className = 'message-item';
+    item.id = `msg-${msg.id}`;
+    // Use data attributes for event delegation
+    const accountId = msg.accountId || msg.account_id || currentAccountId;
+    item.dataset.id = msg.id;
+    item.dataset.accid = accountId;
+    
+    const isUnread = msg.labelIds && msg.labelIds.includes('UNREAD');
+    item.innerHTML = `
+        <div class="unread-dot ${isUnread ? '' : 'invisible'}"></div>
+        <input type="checkbox" class="message-checkbox" data-id="${msg.id}" data-accid="${accountId}">
+        <div class="message-sender text-ellipsis bold">${msg.from || msg.accountEmail || ''}</div>
+        <div class="message-snippet"><b>${msg.subject || '(no subject)'}</b> - ${msg.snippet}</div>
+        <div class="message-date">
+            <span class="message-date-text">${new Date(msg.internalDate).toLocaleDateString()}</span>
+            <div class="message-item-actions">
+                <button class="hover-action-btn toggle-read" title="${isUnread ? 'Mark as Read' : 'Mark as Unread'}">
+                    <i class="fa-solid ${isUnread ? 'fa-envelope-open' : 'fa-envelope'}"></i>
+                </button>
+                <button class="hover-action-btn archive" title="Archive">
+                    <i class="fa-solid fa-box-archive"></i>
+                </button>
+                <button class="hover-action-btn delete" title="Delete">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </div>
+        </div>
+    `;
+    return item;
+}
+
+/**
  * Render message list
  */
 function renderMessages(messages, append = false) {
@@ -802,7 +910,7 @@ function renderMessages(messages, append = false) {
         currentMessages = [];
     }
     if (!messages || messages.length === 0) {
-        if (!append) list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-gray);">No messages found.</div>';
+        if (!append) list.innerHTML = '<div class="no-results">No messages found.</div>';
         return;
     }
     
@@ -824,40 +932,16 @@ function renderMessages(messages, append = false) {
         return 0;
     });
 
-    list.innerHTML = '';
+    const fragment = document.createDocumentFragment();
     sorted.forEach(msg => {
-        const item = document.createElement('div');
-        item.className = 'message-item';
-        item.id = `msg-${msg.id}`;
-        const accountId = msg.accountId || msg.account_id || currentAccountId;
-        const isUnread = msg.labelIds && msg.labelIds.includes('UNREAD');
-        item.innerHTML = `
-            <div class="unread-dot ${isUnread ? '' : 'invisible'}"></div>
-            <input type="checkbox" class="message-checkbox" onclick="event.stopPropagation(); updateSelectionCount()" data-id="${msg.id}" data-accid="${accountId}">
-            <div class="message-sender">${msg.from || msg.accountEmail || ''}</div>
-            <div class="message-snippet"><b>${msg.subject || '(no subject)'}</b> - ${msg.snippet}</div>
-            <div class="message-date">
-                <span class="message-date-text">${new Date(msg.internalDate).toLocaleDateString()}</span>
-                <div class="message-item-actions">
-                    <button class="hover-action-btn toggle-read" onclick="event.stopPropagation(); toggleReadStatus('${msg.id}', ${accountId}, ${isUnread})" title="${isUnread ? 'Mark as Read' : 'Mark as Unread'}">
-                        <i class="fa-solid ${isUnread ? 'fa-envelope-open' : 'fa-envelope'}"></i>
-                    </button>
-                    <button class="hover-action-btn archive" onclick="event.stopPropagation(); archiveMessage('${msg.id}', ${accountId})" title="Archive">
-                        <i class="fa-solid fa-box-archive"></i>
-                    </button>
-                    <button class="hover-action-btn delete" onclick="event.stopPropagation(); trashMessage('${msg.id}', ${accountId})" title="Delete">
-                        <i class="fa-solid fa-trash"></i>
-                    </button>
-                </div>
-            </div>
-        `;
-        item.onclick = () => showMessage(msg.id, accountId);
-        item.ondblclick = () => openMessageInNewWindow(msg.id, accountId);
-        list.appendChild(item);
+        fragment.appendChild(createMessageRow(msg));
     });
 
+    if (!append) list.innerHTML = '';
+    list.appendChild(fragment);
+
     updateSortIcons();
-    initResizers();
+    if (!append) initResizers();
 }
 
 function updateSortIcons() {
@@ -1097,7 +1181,7 @@ async function showMessage(id, accId, isSingleView = false) {
     const panel = document.getElementById('message-detail-panel');
     panel.classList.add('open');
     if (isSingleView) panel.classList.add('single-view');
-    panel.innerHTML = '<div style="padding: 20px; text-align: center;">Loading message...</div>';
+    panel.innerHTML = '<div class="loading-indicator">Loading message...</div>';
 
     try {
         const res = await fetch(`/accounts/${accId}/messages/${id}`);
@@ -1152,27 +1236,27 @@ async function showMessage(id, accId, isSingleView = false) {
         if (isTrashOrSpam && !globalSettings.CAN_PERMANENTLY_DELETE) {
             trashTitle = 'Permanently Delete (Disabled in .env)';
             trashDisabledAttr = 'disabled="disabled"';
-            trashStyleAttr = 'style="opacity: 0.5; cursor: not-allowed;"';
+            trashStyleAttr = 'class="trash-disabled"';
         }
 
         panel.innerHTML = `
             <div class="detail-header">
-                <div class="panel-actions" style="display: flex; gap: 10px; margin-bottom: 15px; align-items: center;">
+                <div class="panel-actions display-flex gap-10 mb-15 align-center">
                     <button class="action-btn" onclick="renderComposerInPanel('${msg.id}', ${accId}, 'reply')" title="Reply"><i class="fa-solid fa-reply"></i></button>
                     <button class="action-btn" onclick="renderComposerInPanel('${msg.id}', ${accId}, 'replyAll')" title="Reply All"><i class="fa-solid fa-reply-all"></i></button>
                     <button class="action-btn" onclick="renderComposerInPanel('${msg.id}', ${accId}, 'forward')" title="Forward"><i class="fa-solid fa-share"></i></button>
-                    <div style="flex: 1;"></div>
+                    <div class="panel-spacer"></div>
                     <button class="action-btn" id="toggle-read-btn" onclick="toggleReadStatus('${msg.id}', ${accId}, ${isUnread})" title="${isUnread ? 'Mark as Read' : 'Mark as Unread'}">
                         <i class="fa-solid ${isUnread ? 'fa-envelope-open' : 'fa-envelope'}"></i>
                     </button>
                     <button class="action-btn" onclick="archiveMessage('${msg.id}', ${accId})" title="Archive"><i class="fa-solid fa-box-archive"></i></button>
                     <button class="action-btn" id="label-picker-btn" onclick="showLabelPicker(event, '${msg.id}', ${accId})" title="Label"><i class="fa-solid fa-tag"></i></button>
                     <button class="action-btn" onclick="trashMessage('${msg.id}', ${accId})" title="${trashTitle}" ${trashDisabledAttr} ${trashStyleAttr}><i class="fa-solid ${trashIcon}"></i></button>
-                    ${isSingleView ? '' : '<span class="back-btn" onclick="hideMessageDetail()" style="margin-left: 10px;"><i class="fa-solid fa-xmark"></i></span>'}
+                    ${isSingleView ? '' : '<span class="back-btn ml-10" onclick="hideMessageDetail()"><i class="fa-solid fa-xmark"></i></span>'}
                 </div>
                 <div class="detail-subject">
-                    <div id="detail-unread-dot" class="unread-dot ${isUnread ? '' : 'invisible'}" style="display: inline-block; margin-right: 10px; vertical-align: middle;"></div>
-                    <span style="vertical-align: middle;">${msg.subject || '(no subject)'}</span>
+                    <div id="detail-unread-dot" class="unread-dot ${isUnread ? '' : 'invisible'} display-inline-block mr-10 v-middle"></div>
+                    <span class="v-middle">${msg.subject || '(no subject)'}</span>
                 </div>
                 <div class="detail-meta">
                     <div class="meta-row">
@@ -1190,9 +1274,9 @@ async function showMessage(id, accId, isSingleView = false) {
                 </div>
             </div>
             ${hasRemoteImages ? `
-                <div id="remote-images-banner" style="background: var(--bg-light-gray); padding: 10px 20px; border-bottom: 1px solid var(--border-gray); font-size: 13px; display: flex; align-items: center; justify-content: space-between;">
+                <div id="remote-images-banner" class="remote-images-banner">
                     <span>External images are blocked for your privacy.</span>
-                    <button class="compose-btn" style="width: auto; padding: 5px 15px; font-size: 12px;" onclick="loadImages()">Display images below</button>
+                    <button class="compose-btn btn-inline font-12" onclick="loadImages()">Display images below</button>
                 </div>
             ` : ''}
             <div class="detail-body-container">
@@ -1219,7 +1303,7 @@ async function showMessage(id, accId, isSingleView = false) {
 
     } catch (err) {
         console.error(err);
-        panel.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--accent-red);">Failed to load message.</div>';
+        panel.innerHTML = '<div class="error-indicator">Failed to load message.</div>';
     }
 }
 
@@ -1289,7 +1373,7 @@ function renderComposerInPanel(id, accId, action) {
         to = msg.from;
         subject = msg.subject.toLowerCase().startsWith('re:') ? msg.subject : `Re: ${msg.subject}`;
         bodyText = `\n\nOn ${dateStr}, ${msg.from} wrote:\n> ${quoteText.replace(/\n/g, '\n> ')}`;
-        bodyHtml = `<br><br>On ${dateStr}, ${msg.from} wrote:<br><blockquote style="border-left: 1px solid #ccc; margin-left: 0; padding-left: 1ex;">${quoteHtml}</blockquote>`;
+        bodyHtml = `<br><br>On ${dateStr}, ${msg.from} wrote:<br><blockquote class="blockquote-styled">${quoteHtml}</blockquote>`;
         threadId = msg.threadId;
         inReplyTo = msg.messageId;
         references = (msg.references ? msg.references + " " : "") + msg.messageId;
@@ -1301,7 +1385,7 @@ function renderComposerInPanel(id, accId, action) {
         }
         subject = msg.subject.toLowerCase().startsWith('re:') ? msg.subject : `Re: ${msg.subject}`;
         bodyText = `\n\nOn ${dateStr}, ${msg.from} wrote:\n> ${quoteText.replace(/\n/g, '\n> ')}`;
-        bodyHtml = `<br><br>On ${dateStr}, ${msg.from} wrote:<br><blockquote style="border-left: 1px solid #ccc; margin-left: 0; padding-left: 1ex;">${quoteHtml}</blockquote>`;
+        bodyHtml = `<br><br>On ${dateStr}, ${msg.from} wrote:<br><blockquote class="blockquote-styled">${quoteHtml}</blockquote>`;
         threadId = msg.threadId;
         inReplyTo = msg.messageId;
         references = (msg.references ? msg.references + " " : "") + msg.messageId;
@@ -1318,31 +1402,31 @@ function renderComposerInPanel(id, accId, action) {
     const useHtml = globalSettings.COMPOSE_AS_HTML !== 'false';
 
     panel.innerHTML = `
-        <div class="composer-in-panel" style="display: flex; flex-direction: column; height: 100%;">
-            <div class="composer-header" style="background: none; color: var(--text-dark); border-bottom: 1px solid var(--border-gray); border-radius: 0; padding: 20px;">
-                <span style="font-size: 18px; font-weight: bold;">${action.charAt(0).toUpperCase() + action.slice(1).replace(/([A-Z])/g, ' $1')}</span>
-                <span style="cursor: pointer;" onclick="showMessage('${id}', ${accId}, ${isSingleView})">✖</span>
+        <div class="composer-in-panel">
+            <div class="composer-header-styled display-flex justify-between">
+                <span class="font-18 bold">${action.charAt(0).toUpperCase() + action.slice(1).replace(/([A-Z])/g, ' $1')}</span>
+                <span class="cursor-pointer" onclick="showMessage('${id}', ${accId}, ${isSingleView})">✖</span>
             </div>
-            <div class="composer-body" style="padding: 20px; flex: 1; display: flex; flex-direction: column; overflow-y: auto;">
+            <div class="composer-body-styled">
                 <div class="form-group">
                     <label>From</label>
                     <select id="panel-compose-from"></select>
                 </div>
-                <div class="form-group" style="position: relative;">
+                <div class="form-group position-relative">
                     <label>To</label>
-                    <div style="display: flex; align-items: center; flex: 1;">
-                        <input type="text" id="panel-compose-to" placeholder="To" value="${to.replace(/"/g, '&quot;')}" style="flex: 1;">
-                        <div style="font-size: 12px; color: var(--text-gray); cursor: pointer; user-select: none; margin-left: 10px; white-space: nowrap;">
-                            <span id="toggle-cc" onclick="toggleComposeField('cc')" style="margin-left: 10px;">Cc</span>
-                            <span id="toggle-bcc" onclick="toggleComposeField('bcc')" style="margin-left: 10px;">Bcc</span>
+                    <div class="display-flex align-center flex-1">
+                        <input type="text" id="panel-compose-to" placeholder="To" value="${to.replace(/"/g, '&quot;')}" class="flex-1">
+                        <div class="font-12 text-gray cursor-pointer user-select-none ml-10 text-nowrap">
+                            <span id="toggle-cc" onclick="toggleComposeField('cc')" class="ml-10">Cc</span>
+                            <span id="toggle-bcc" onclick="toggleComposeField('bcc')" class="ml-10">Bcc</span>
                         </div>
                     </div>
                 </div>
-                <div id="group-cc" class="form-group" style="display: none;">
+                <div id="group-cc" class="form-group display-none">
                     <label>Cc</label>
                     <input type="text" id="panel-compose-cc" placeholder="Cc" value="">
                 </div>
-                <div id="group-bcc" class="form-group" style="display: none;">
+                <div id="group-bcc" class="form-group display-none">
                     <label>Bcc</label>
                     <input type="text" id="panel-compose-bcc" placeholder="Bcc" value="">
                 </div>
@@ -1350,21 +1434,21 @@ function renderComposerInPanel(id, accId, action) {
                     <label>Subject</label>
                     <input type="text" id="panel-compose-subject" placeholder="Subject" value="${subject.replace(/"/g, '&quot;')}">
                 </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-                    <label style="font-size: 12px; cursor: pointer; color: var(--text-gray);">
+                <div class="display-flex justify-between align-center mt-10">
+                    <label class="font-12 cursor-pointer text-gray">
                         <input type="checkbox" id="panel-compose-is-html" onchange="toggleComposeFormat(this)" ${useHtml ? 'checked' : ''}> HTML Format
                     </label>
                 </div>
-                <div class="form-group" style="flex: 1; display: flex; flex-direction: column; border: none; margin-top: 5px;">
-                    <div id="panel-compose-body-html" contenteditable="true" style="display: ${useHtml ? 'block' : 'none'}; flex: 1; min-height: 300px; border: 1px solid var(--border-gray); padding: 10px; border-radius: 4px; overflow-y: auto; background: white; font-family: sans-serif;">${bodyHtml}</div>
-                    <textarea id="panel-compose-body" placeholder="Body" style="display: ${useHtml ? 'none' : 'block'}; flex: 1; min-height: 300px; border: 1px solid var(--border-gray); padding: 10px; border-radius: 4px;">${bodyText}</textarea>
+                <div class="form-group flex-1 display-flex flex-column border-none mt-5">
+                    <div id="panel-compose-body-html" contenteditable="true" class="${useHtml ? 'display-block' : 'display-none'} composer-body-editable">${bodyHtml}</div>
+                    <textarea id="panel-compose-body" placeholder="Body" class="${useHtml ? 'display-none' : 'display-block'} composer-body-textarea">${bodyText}</textarea>
                 </div>
                 <input type="hidden" id="panel-compose-thread-id" value="${threadId}">
                 <input type="hidden" id="panel-compose-in-reply-to" value="${inReplyTo}">
                 <input type="hidden" id="panel-compose-references" value="${references}">
-                <div style="display: flex; gap: 10px; margin-top: 20px; padding-bottom: 20px;">
-                    <button class="compose-btn" style="width: 120px;" onclick="sendEmailFromPanel(event, ${accId})">Send</button>
-                    <button class="compose-btn" style="width: 120px; background: var(--bg-light-gray);" onclick="showMessage('${id}', ${accId}, ${isSingleView})">Discard</button>
+                <div class="display-flex gap-10 mt-20 pb-20">
+                    <button class="compose-btn btn-fixed-120" onclick="sendEmailFromPanel(event, ${accId})">Send</button>
+                    <button class="compose-btn btn-fixed-120 bg-light-gray" onclick="showMessage('${id}', ${accId}, ${isSingleView})">Discard</button>
                 </div>
             </div>
         </div>
@@ -1572,19 +1656,11 @@ async function showLabelPicker(event, msgId, accId) {
 
     const dropdown = document.createElement('div');
     dropdown.id = 'label-picker-dropdown';
+    dropdown.className = 'label-picker-dropdown';
     dropdown.dataset.msgId = msgId;
-    dropdown.style.position = 'fixed';
     dropdown.style.top = `${rect.bottom + 5}px`;
     dropdown.style.left = `${rect.left}px`;
-    dropdown.style.background = 'var(--bg-white)';
-    dropdown.style.border = '1px solid var(--border-gray)';
-    dropdown.style.borderRadius = '4px';
-    dropdown.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
-    dropdown.style.zIndex = '1000';
-    dropdown.style.maxHeight = '300px';
-    dropdown.style.overflowY = 'auto';
-    dropdown.style.minWidth = '150px';
-    dropdown.innerHTML = '<div style="padding: 10px; font-size: 12px; color: var(--text-gray);">Loading labels...</div>';
+    dropdown.innerHTML = '<div class="p-10 font-12 text-gray">Loading labels...</div>';
     
     document.body.appendChild(dropdown);
 
@@ -1601,30 +1677,27 @@ async function showLabelPicker(event, msgId, accId) {
         const labels = await res.json();
         
         if (labels.length === 0) {
-            dropdown.innerHTML = '<div style="padding: 10px; font-size: 12px; color: var(--text-gray);">No labels found</div>';
+            dropdown.innerHTML = '<div class="p-10 font-12 text-gray">No labels found</div>';
         } else {
             dropdown.innerHTML = '';
             labels.forEach(l => {
                 const item = document.createElement('div');
-                item.className = 'label-picker-item';
-                item.style.padding = '8px 15px';
-                item.style.cursor = 'pointer';
-                item.style.fontSize = '13px';
+                item.className = 'label-picker-item cursor-pointer font-13 p-8-15';
                 item.innerText = l.name;
                 item.onclick = async () => {
-                    dropdown.innerHTML = '<div style="padding: 10px; font-size: 12px; color: var(--text-gray);">Applying...</div>';
+                    dropdown.innerHTML = '<div class="p-10 font-12 text-gray">Applying...</div>';
                     await applyLabel(msgId, accId, l.id);
                     dropdown.remove();
                     document.removeEventListener('click', closeHandler);
                 };
-                item.onmouseover = () => item.style.background = 'var(--bg-light-gray)';
-                item.onmouseout = () => item.style.background = 'transparent';
+                item.onmouseover = () => item.className = 'label-picker-item cursor-pointer font-13 bg-light-gray';
+                item.onmouseout = () => item.className = 'label-picker-item cursor-pointer font-13';
                 dropdown.appendChild(item);
             });
         }
     } catch (err) {
         console.error(err);
-        dropdown.innerHTML = '<div style="padding: 10px; font-size: 12px; color: var(--accent-red);">Error loading labels</div>';
+        dropdown.innerHTML = '<div class="p-10 font-12 error-indicator">Error loading labels</div>';
     }
 }
 
@@ -1684,31 +1757,31 @@ function renderNewComposerInPanel(accId) {
     const useHtml = globalSettings.COMPOSE_AS_HTML !== 'false';
 
     panel.innerHTML = `
-        <div class="composer-in-panel" style="display: flex; flex-direction: column; height: 100%;">
-            <div class="composer-header" style="background: none; color: var(--text-dark); border-bottom: 1px solid var(--border-gray); border-radius: 0; padding: 20px;">
-                <span style="font-size: 18px; font-weight: bold;">New Message</span>
-                <span style="cursor: pointer;" onclick="${discardAction}">✖</span>
+        <div class="composer-in-panel">
+            <div class="composer-header-styled display-flex justify-between">
+                <span class="font-18 bold">New Message</span>
+                <span class="cursor-pointer" onclick="${discardAction}">✖</span>
             </div>
-            <div class="composer-body" style="padding: 20px; flex: 1; display: flex; flex-direction: column; overflow-y: auto;">
+            <div class="composer-body-styled">
                 <div class="form-group">
                     <label>From</label>
                     <select id="panel-compose-from"></select>
                 </div>
-                <div class="form-group" style="position: relative;">
+                <div class="form-group position-relative">
                     <label>To</label>
-                    <div style="display: flex; align-items: center; flex: 1;">
-                        <input type="text" id="panel-compose-to" placeholder="To" value="" style="flex: 1;">
-                        <div style="font-size: 12px; color: var(--text-gray); cursor: pointer; user-select: none; margin-left: 10px; white-space: nowrap;">
-                            <span id="toggle-cc" onclick="toggleComposeField('cc')" style="margin-left: 10px;">Cc</span>
-                            <span id="toggle-bcc" onclick="toggleComposeField('bcc')" style="margin-left: 10px;">Bcc</span>
+                    <div class="display-flex align-center flex-1">
+                        <input type="text" id="panel-compose-to" placeholder="To" value="" class="flex-1">
+                        <div class="font-12 text-gray cursor-pointer user-select-none ml-10 text-nowrap">
+                            <span id="toggle-cc" onclick="toggleComposeField('cc')" class="ml-10">Cc</span>
+                            <span id="toggle-bcc" onclick="toggleComposeField('bcc')" class="ml-10">Bcc</span>
                         </div>
                     </div>
                 </div>
-                <div id="group-cc" class="form-group" style="display: none;">
+                <div id="group-cc" class="form-group display-none">
                     <label>Cc</label>
                     <input type="text" id="panel-compose-cc" placeholder="Cc" value="">
                 </div>
-                <div id="group-bcc" class="form-group" style="display: none;">
+                <div id="group-bcc" class="form-group display-none">
                     <label>Bcc</label>
                     <input type="text" id="panel-compose-bcc" placeholder="Bcc" value="">
                 </div>
@@ -1716,21 +1789,21 @@ function renderNewComposerInPanel(accId) {
                     <label>Subject</label>
                     <input type="text" id="panel-compose-subject" placeholder="Subject" value="">
                 </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-                    <label style="font-size: 12px; cursor: pointer; color: var(--text-gray);">
+                <div class="display-flex justify-between align-center mt-10">
+                    <label class="font-12 cursor-pointer text-gray">
                         <input type="checkbox" id="panel-compose-is-html" onchange="toggleComposeFormat(this)" ${useHtml ? 'checked' : ''}> HTML Format
                     </label>
                 </div>
-                <div class="form-group" style="flex: 1; display: flex; flex-direction: column; border: none; margin-top: 5px;">
-                    <div id="panel-compose-body-html" contenteditable="true" style="display: ${useHtml ? 'block' : 'none'}; flex: 1; min-height: 300px; border: 1px solid var(--border-gray); padding: 10px; border-radius: 4px; overflow-y: auto; background: white; font-family: sans-serif;"></div>
-                    <textarea id="panel-compose-body" placeholder="Body" style="display: ${useHtml ? 'none' : 'block'}; flex: 1; min-height: 300px; border: 1px solid var(--border-gray); padding: 10px; border-radius: 4px;"></textarea>
+                <div class="form-group flex-1 display-flex flex-column border-none mt-5">
+                    <div id="panel-compose-body-html" contenteditable="true" class="${useHtml ? 'display-block' : 'display-none'} composer-body-editable"></div>
+                    <textarea id="panel-compose-body" placeholder="Body" class="${useHtml ? 'display-none' : 'display-block'} composer-body-textarea"></textarea>
                 </div>
                 <input type="hidden" id="panel-compose-thread-id" value="">
                 <input type="hidden" id="panel-compose-in-reply-to" value="">
                 <input type="hidden" id="panel-compose-references" value="">
-                <div style="display: flex; gap: 10px; margin-top: 20px; padding-bottom: 20px;">
-                    <button class="compose-btn" style="width: 120px;" onclick="sendEmailFromPanel(event, ${accId})">Send</button>
-                    <button class="compose-btn" style="width: 120px; background: var(--bg-light-gray);" onclick="${discardAction}">Discard</button>
+                <div class="display-flex gap-10 mt-20 pb-20">
+                    <button class="compose-btn btn-fixed-120" onclick="sendEmailFromPanel(event, ${accId})">Send</button>
+                    <button class="compose-btn btn-fixed-120 bg-light-gray" onclick="${discardAction}">Discard</button>
                 </div>
             </div>
         </div>

@@ -35,11 +35,11 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Include Routers
-app.include_router(auth.router)
-app.include_router(accounts.router)
-app.include_router(messages.router)
-app.include_router(contacts.router)
-app.include_router(settings.router)
+app.include_router(auth)
+app.include_router(accounts)
+app.include_router(messages)
+app.include_router(contacts)
+app.include_router(settings)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
