@@ -3,6 +3,7 @@
  * Main Application Logic
  */
 
+console.log("Prosciutto app.js VERSION 33 loading...");
 let currentLabel = 'INBOX';
 let currentAccountId = null; // null means unified
 let accounts = [];
@@ -1202,17 +1203,11 @@ async function renderDraftInComposer(id, accId) {
         if (useHtml) {
             htmlDiv.innerHTML = msg.html_body;
             htmlDiv.classList.remove('display-none');
-            htmlDiv.classList.add('display-block');
-            textArea.classList.remove('display-block');
             textArea.classList.add('display-none');
-            if (markupBtns) markupBtns.classList.remove('display-none');
         } else {
             textArea.value = msg.body;
             textArea.classList.remove('display-none');
-            textArea.classList.add('display-block');
-            htmlDiv.classList.remove('display-block');
             htmlDiv.classList.add('display-none');
-            if (markupBtns) markupBtns.classList.add('display-none');
         }
         
     } catch (err) {
@@ -1402,8 +1397,12 @@ window.doComposerAction = function(command, value = null) {
     
     const useHtml = isHtml && isHtml.checked;
     
+    console.log(`doComposerAction: command=${command}, useHtml=${useHtml}`);
+    console.log(`  textArea exists: ${!!textArea}, htmlDiv exists: ${!!htmlDiv}`);
+    
     if (useHtml) {
         if (htmlDiv) {
+            console.log("  Executing HTML mode command");
             htmlDiv.focus();
             document.execCommand(command, false, value);
         }
@@ -1413,6 +1412,8 @@ window.doComposerAction = function(command, value = null) {
         const end = textArea.selectionEnd;
         const text = textArea.value;
         const selectedText = text.substring(start, end);
+        
+        console.log(`  Plain text mode: start=${start}, end=${end}, selectedText="${selectedText}"`);
         
         let replacement = '';
         let startOffset = 0;
@@ -1455,10 +1456,15 @@ window.doComposerAction = function(command, value = null) {
                 replacement = selectedText;
         }
 
+        console.log(`  Replacement: "${replacement}"`);
+
         // 2. Update the text area value
-        textArea.value = text.substring(0, start) + replacement + text.substring(end);
+        const beforeText = text.substring(0, start);
+        const afterText = text.substring(end);
+        textArea.value = beforeText + replacement + afterText;
         
         // 3. Restore focus and selection explicitly
+        console.log("  Restoring focus and selection");
         textArea.focus();
         if (selectedText || command === 'indent' || command === 'outdent') {
             textArea.setSelectionRange(start, start + replacement.length);
@@ -1467,6 +1473,7 @@ window.doComposerAction = function(command, value = null) {
             const innerEnd = start + replacement.length - (command === 'bold' || command === 'italic' || command === 'underline' ? startOffset : 0);
             textArea.setSelectionRange(innerStart, innerEnd);
         }
+        console.log(`  New selectionRange: ${textArea.selectionStart}-${textArea.selectionEnd}`);
     }
 }
 
@@ -1491,18 +1498,17 @@ window.createLink = function() {
     }
 }
 
-function toggleComposeFormat(checkbox) {
+window.toggleComposeFormat = function(checkbox) {
+    console.log(`toggleComposeFormat: checked=${checkbox.checked}`);
     const htmlDiv = document.getElementById('panel-compose-body-html');
     const textArea = document.getElementById('panel-compose-body');
+    console.log(`  htmlDiv found: ${!!htmlDiv}, textArea found: ${!!textArea}`);
     
     if (checkbox.checked) {
         // Switch to HTML
         htmlDiv.innerHTML = textArea.value.replace(/\n/g, '<br>');
         
         htmlDiv.classList.remove('display-none');
-        htmlDiv.classList.add('display-block');
-        
-        textArea.classList.remove('display-block');
         textArea.classList.add('display-none');
     } else {
         // Switch to Text
@@ -1512,9 +1518,6 @@ function toggleComposeFormat(checkbox) {
         textArea.value = tempDiv.innerText || tempDiv.textContent;
         
         textArea.classList.remove('display-none');
-        textArea.classList.add('display-block');
-        
-        htmlDiv.classList.remove('display-block');
         htmlDiv.classList.add('display-none');
     }
 }
@@ -1606,7 +1609,7 @@ function renderComposerInPanel(id, accId, action) {
                 </div>
                 <div id="panel-compose-toolbar" class="composer-toolbar justify-between">
                     <div id="panel-compose-markup-btns" class="display-flex gap-5">
-                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('bold'); return false;" title="Bold"><i class="fa-solid fa-bold"></i></button>
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="console.log('Bold mousedown'); event.preventDefault(); window.doComposerAction('bold'); return false;" title="Bold"><i class="fa-solid fa-bold"></i></button>
                         <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('italic'); return false;" title="Italic"><i class="fa-solid fa-italic"></i></button>
                         <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('underline'); return false;" title="Underline"><i class="fa-solid fa-underline"></i></button>
                         <div class="toolbar-divider"></div>
@@ -1621,15 +1624,15 @@ function renderComposerInPanel(id, accId, action) {
                     </div>
                     <div class="display-flex align-center">
                         <label class="switch">
-                            <input type="checkbox" id="panel-compose-is-html" onchange="toggleComposeFormat(this)" ${useHtml ? 'checked' : ''}>
+                            <input type="checkbox" id="panel-compose-is-html" onchange="console.log('HTML Mode changed'); window.toggleComposeFormat(this)" ${useHtml ? 'checked' : ''}>
                             <span class="slider"></span>
                         </label>
                         <span class="font-13 text-gray ml-5">HTML Mode</span>
                     </div>
                 </div>
                 <div class="form-group flex-1 display-flex flex-column border-none mt-5">
-                    <div id="panel-compose-body-html" contenteditable="true" class="${useHtml ? 'display-block' : 'display-none'} composer-body-editable">${bodyHtml}</div>
-                    <textarea id="panel-compose-body" placeholder="Body" class="${useHtml ? 'display-none' : 'display-block'} composer-body-textarea">${bodyText}</textarea>
+                    <div id="panel-compose-body-html" contenteditable="true" class="${useHtml ? '' : 'display-none'} composer-body-editable">${bodyHtml}</div>
+                    <textarea id="panel-compose-body" placeholder="Body" class="${useHtml ? 'display-none' : ''} composer-body-textarea">${bodyText}</textarea>
                 </div>
                 <input type="hidden" id="panel-compose-thread-id" value="${threadId}">
                 <input type="hidden" id="panel-compose-in-reply-to" value="${inReplyTo}">
@@ -1997,6 +2000,7 @@ function hideMessageDetail() {
  * Render new message composer in the side panel
  */
 function renderNewComposerInPanel(accId) {
+    console.log(`renderNewComposerInPanel: accId=${accId}`);
     if (!accId) {
         const activeAcc = accounts.find(a => a.is_active) || accounts[0];
         if (activeAcc) accId = activeAcc.id;
@@ -2047,7 +2051,7 @@ function renderNewComposerInPanel(accId) {
                 </div>
                 <div id="panel-compose-toolbar" class="composer-toolbar justify-between">
                     <div id="panel-compose-markup-btns" class="display-flex gap-5">
-                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('bold'); return false;" title="Bold"><i class="fa-solid fa-bold"></i></button>
+                        <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="console.log('Bold mousedown'); event.preventDefault(); window.doComposerAction('bold'); return false;" title="Bold"><i class="fa-solid fa-bold"></i></button>
                         <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('italic'); return false;" title="Italic"><i class="fa-solid fa-italic"></i></button>
                         <button type="button" tabindex="-1" class="toolbar-btn" onmousedown="event.preventDefault(); window.doComposerAction('underline'); return false;" title="Underline"><i class="fa-solid fa-underline"></i></button>
                         <div class="toolbar-divider"></div>
@@ -2062,15 +2066,15 @@ function renderNewComposerInPanel(accId) {
                     </div>
                     <div class="display-flex align-center">
                         <label class="switch">
-                            <input type="checkbox" id="panel-compose-is-html" onchange="toggleComposeFormat(this)" ${useHtml ? 'checked' : ''}>
+                            <input type="checkbox" id="panel-compose-is-html" onchange="console.log('HTML Mode changed'); window.toggleComposeFormat(this)" ${useHtml ? 'checked' : ''}>
                             <span class="slider"></span>
                         </label>
                         <span class="font-13 text-gray ml-5">HTML Mode</span>
                     </div>
                 </div>
                 <div class="form-group flex-1 display-flex flex-column border-none mt-5">
-                    <div id="panel-compose-body-html" contenteditable="true" class="${useHtml ? 'display-block' : 'display-none'} composer-body-editable"></div>
-                    <textarea id="panel-compose-body" placeholder="Body" class="${useHtml ? 'display-none' : 'display-block'} composer-body-textarea"></textarea>
+                    <div id="panel-compose-body-html" contenteditable="true" class="${useHtml ? '' : 'display-none'} composer-body-editable"></div>
+                    <textarea id="panel-compose-body" placeholder="Body" class="${useHtml ? 'display-none' : ''} composer-body-textarea"></textarea>
                 </div>
                 <input type="hidden" id="panel-compose-thread-id" value="">
                 <input type="hidden" id="panel-compose-in-reply-to" value="">

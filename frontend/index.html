@@ -3,7 +3,7 @@
 <head>
     <title>Prosciutto</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link rel="stylesheet" href="styles/styles.css">
+    <link rel="stylesheet" href="styles/styles.css?v=33">
 </head>
 <body>
     <div id="sidebar">
@@ -304,6 +304,14 @@
         </div>
     </div>
 
-    <script src="js/app.js"></script>
+    <script>
+        console.log("Prosciutto index.html loaded, window.location=" + window.location.href);
+        document.addEventListener('mousedown', (e) => {
+            console.log("GLOBAL MOUSEDOWN: target=", e.target, " id=", e.target.id, " class=", e.target.className);
+            let p = e.target.parentElement;
+            if (p) console.log("  parent: ", p.tagName, " id=", p.id, " class=", p.className);
+        }, true);
+    </script>
+    <script src="js/app.js?v=33"></script>
 </body>
 </html>
