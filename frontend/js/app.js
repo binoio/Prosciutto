@@ -22,9 +22,37 @@ let columnWidths = {
 async function init() {
     document.documentElement.style.setProperty('--sender-width', `${columnWidths.sender}px`);
     const urlParams = new URLSearchParams(window.location.search);
-    const messageId = urlParams.get('messageId');
-    const accountId = urlParams.get('accountId');
+    let messageId = urlParams.get('messageId');
+    let accountId = urlParams.get('accountId');
     const compose = urlParams.get('compose');
+    const settings = urlParams.get('settings');
+
+    if (messageId === 'null') messageId = null;
+    if (accountId === 'null') accountId = null;
+
+    if (settings === 'true') {
+        // Settings-only view mode
+        const sidebar = document.getElementById('sidebar');
+        const header = document.getElementById('header');
+        const listContainer = document.getElementById('message-list-container');
+        
+        if (sidebar) sidebar.style.display = 'none';
+        if (header) header.style.display = 'none';
+        if (listContainer) listContainer.style.display = 'none';
+        
+        const modal = document.getElementById('settings-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            modal.classList.add('standalone');
+        }
+
+        await loadSettings();
+        await loadAccounts();
+        renderAccountsInSettings();
+        renderContactsAccounts();
+        loadStats();
+        return;
+    }
 
     if (compose === 'true') {
         // Compose-only view mode
@@ -49,11 +77,18 @@ async function init() {
 
     if (messageId && accountId) {
         // Single-message view mode
-        document.getElementById('sidebar').style.display = 'none';
-        document.getElementById('header').style.display = 'none';
-        document.getElementById('message-list-container').style.display = 'none';
+        const sidebar = document.getElementById('sidebar');
+        const header = document.getElementById('header');
+        const listContainer = document.getElementById('message-list-container');
+        
+        if (sidebar) sidebar.style.display = 'none';
+        if (header) header.style.display = 'none';
+        if (listContainer) listContainer.style.display = 'none';
+        
         const panel = document.getElementById('message-detail-panel');
-        panel.classList.add('open', 'single-view');
+        if (panel) {
+            panel.classList.add('open', 'single-view');
+        }
 
         await loadSettings();
         await loadAccounts();
@@ -63,11 +98,12 @@ async function init() {
 
     await loadSettings();
     if (globalSettings.ALWAYS_COLLAPSE_SIDEBAR === 'true') {
-        document.getElementById('sidebar').classList.add('collapsed');
+        setSidebarCollapsed(true);
     }
     await loadAccounts();
     if (accounts.length === 0) {
-        document.getElementById('first-run-prompt').style.display = 'flex';
+        const firstRun = document.getElementById('first-run-prompt');
+        if (firstRun) firstRun.style.display = 'flex';
     } else {
         loadMailbox('INBOX');
     }
@@ -117,6 +153,8 @@ function setupEventDelegation() {
     });
 
     list.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
         const row = e.target.closest('.message-item');
         if (row) {
             const msgId = row.dataset.id;
@@ -134,58 +172,87 @@ async function loadSettings() {
     globalSettings = await res.json();
 
     // Populate General Settings
-    document.getElementById('client-id').value = globalSettings.GOOGLE_CLIENT_ID || '';
-    document.getElementById('client-secret').value = globalSettings.GOOGLE_CLIENT_SECRET || '';
-    document.getElementById('setting-compose-window').checked = globalSettings.COMPOSE_NEW_WINDOW !== 'false';
-    document.getElementById('setting-compose-html').checked = globalSettings.COMPOSE_AS_HTML !== 'false';
-    document.getElementById('setting-mark-read').checked = globalSettings.MARK_READ_AUTOMATICALLY !== 'false';
+    const clientIdEl = document.getElementById('client-id');
+    if (clientIdEl) clientIdEl.value = globalSettings.GOOGLE_CLIENT_ID || '';
+    
+    const clientSecretEl = document.getElementById('client-secret');
+    if (clientSecretEl) clientSecretEl.value = globalSettings.GOOGLE_CLIENT_SECRET || '';
+    
+    const composeWindowEl = document.getElementById('setting-compose-window');
+    if (composeWindowEl) composeWindowEl.checked = globalSettings.COMPOSE_NEW_WINDOW !== 'false';
+    
+    const composeHtmlEl = document.getElementById('setting-compose-html');
+    if (composeHtmlEl) composeHtmlEl.checked = globalSettings.COMPOSE_AS_HTML !== 'false';
+    
+    const markReadAutoEl = document.getElementById('setting-mark-read');
+    if (markReadAutoEl) markReadAutoEl.checked = globalSettings.MARK_READ_AUTOMATICALLY !== 'false';
 
     const warnDeleteCheckbox = document.getElementById('setting-warn-delete');
-    warnDeleteCheckbox.checked = globalSettings.WARN_BEFORE_DELETE !== 'false';
-    if (!globalSettings.CAN_PERMANENTLY_DELETE) {
-        warnDeleteCheckbox.disabled = true;
-        warnDeleteCheckbox.parentElement.title = "Deletion scope not enabled in .env";
-        warnDeleteCheckbox.parentElement.style.opacity = "0.6";
-    } else {
-        warnDeleteCheckbox.disabled = false;
-        warnDeleteCheckbox.parentElement.title = "";
-        warnDeleteCheckbox.parentElement.style.opacity = "1";
+    if (warnDeleteCheckbox) {
+        warnDeleteCheckbox.checked = globalSettings.WARN_BEFORE_DELETE !== 'false';
+        if (!globalSettings.CAN_PERMANENTLY_DELETE) {
+            warnDeleteCheckbox.disabled = true;
+            if (warnDeleteCheckbox.parentElement) {
+                warnDeleteCheckbox.parentElement.title = "Deletion scope not enabled in .env";
+                warnDeleteCheckbox.parentElement.style.opacity = "0.6";
+            }
+        } else {
+            warnDeleteCheckbox.disabled = false;
+            if (warnDeleteCheckbox.parentElement) {
+                warnDeleteCheckbox.parentElement.title = "";
+                warnDeleteCheckbox.parentElement.style.opacity = "1";
+            }
+        }
     }
 
+    const clientIdEnvBadge = document.getElementById('client-id-env-badge');
     if (globalSettings.is_client_id_env) {
-        document.getElementById('client-id').disabled = true;
-        document.getElementById('client-id-env-badge').style.display = 'inline-block';
+        if (clientIdEl) clientIdEl.disabled = true;
+        if (clientIdEnvBadge) clientIdEnvBadge.style.display = 'inline-block';
     }
+    
+    const clientSecretEnvBadge = document.getElementById('client-secret-env-badge');
     if (globalSettings.is_client_secret_env) {
-        document.getElementById('client-secret').disabled = true;
-        document.getElementById('client-secret-env-badge').style.display = 'inline-block';
+        if (clientSecretEl) clientSecretEl.disabled = true;
+        if (clientSecretEnvBadge) clientSecretEnvBadge.style.display = 'inline-block';
     }
 
     toggleClientSecretVisibility();
 
     const feedback = document.getElementById('credentials-feedback');
-    if (globalSettings.is_client_id_env || globalSettings.is_client_secret_env) {
-        feedback.innerText = "Some settings are locked because they are provided via environment variables.";
-        feedback.style.color = "var(--text-gray)";
-    } else if (globalSettings.GOOGLE_CLIENT_ID && (globalSettings.OAUTH_APP_TYPE === 'desktop' || globalSettings.GOOGLE_CLIENT_SECRET)) {
-        feedback.innerText = "Credentials are configured and stored in the database.";
-        feedback.style.color = "green";
-    } else {
-        feedback.innerText = "Credentials are not yet configured.";
-        feedback.style.color = "var(--accent-red)";
+    if (feedback) {
+        if (globalSettings.is_client_id_env || globalSettings.is_client_secret_env) {
+            feedback.innerText = "Some settings are locked because they are provided via environment variables.";
+            feedback.style.color = "var(--text-gray)";
+        } else if (globalSettings.GOOGLE_CLIENT_ID && (globalSettings.OAUTH_APP_TYPE === 'desktop' || globalSettings.GOOGLE_CLIENT_SECRET)) {
+            feedback.innerText = "Credentials are configured and stored in the database.";
+            feedback.style.color = "green";
+        } else {
+            feedback.innerText = "Credentials are not yet configured.";
+            feedback.style.color = "var(--accent-red)";
+        }
     }
 
     // Populate Appearance Settings
-    document.getElementById('setting-theme').value = globalSettings.THEME || 'automatic';
-    document.getElementById('setting-disclosure').checked = globalSettings.SHOW_DISCLOSURE_IF_SINGLE === 'true';
-    document.getElementById('setting-starred').checked = globalSettings.SHOW_STARRED === 'true';
-    document.getElementById('setting-collapse-sidebar').checked = globalSettings.ALWAYS_COLLAPSE_SIDEBAR === 'true';
+    const themeEl = document.getElementById('setting-theme');
+    if (themeEl) themeEl.value = globalSettings.THEME || 'automatic';
+    
+    const disclosureEl = document.getElementById('setting-disclosure');
+    if (disclosureEl) disclosureEl.checked = globalSettings.SHOW_DISCLOSURE_IF_SINGLE === 'true';
+    
+    const starredEl = document.getElementById('setting-starred');
+    if (starredEl) starredEl.checked = globalSettings.SHOW_STARRED === 'true';
+    
+    const collapseSidebarEl = document.getElementById('setting-collapse-sidebar');
+    if (collapseSidebarEl) collapseSidebarEl.checked = globalSettings.ALWAYS_COLLAPSE_SIDEBAR === 'true';
 
     // Populate Contacts Settings
-    document.getElementById('setting-autocomplete-recents').checked = globalSettings.AUTOCOMPLETE_RECENTS === 'true';
+    const autocompleteRecentsEl = document.getElementById('setting-autocomplete-recents');
+    if (autocompleteRecentsEl) autocompleteRecentsEl.checked = globalSettings.AUTOCOMPLETE_RECENTS === 'true';
 
     // Populate Privacy Settings
-    document.getElementById('setting-remote-images').checked = globalSettings.LOAD_REMOTE_IMAGES === 'true';
+    const remoteImagesEl = document.getElementById('setting-remote-images');
+    if (remoteImagesEl) remoteImagesEl.checked = globalSettings.LOAD_REMOTE_IMAGES === 'true';
 
     applyTheme(globalSettings.THEME);
     updateStarredMailboxVisibility();
@@ -249,18 +316,13 @@ async function saveAllSettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
     });
+
+    notifyOpener(data);
+
+    await loadSettings();
     
-    applyTheme(theme);
-    
-    globalSettings.THEME = theme;
-    globalSettings.SHOW_DISCLOSURE_IF_SINGLE = data.SHOW_DISCLOSURE_IF_SINGLE;
-    globalSettings.SHOW_STARRED = data.SHOW_STARRED;
-    globalSettings.LOAD_REMOTE_IMAGES = data.LOAD_REMOTE_IMAGES;
-    globalSettings.COMPOSE_NEW_WINDOW = data.COMPOSE_NEW_WINDOW;
-    globalSettings.COMPOSE_AS_HTML = data.COMPOSE_AS_HTML;
-    globalSettings.MARK_READ_AUTOMATICALLY = data.MARK_READ_AUTOMATICALLY;
-    globalSettings.AUTOCOMPLETE_RECENTS = data.AUTOCOMPLETE_RECENTS;
-    globalSettings.AUTOCOMPLETE_ENABLED_ACCOUNTS = data.AUTOCOMPLETE_ENABLED_ACCOUNTS;
+    // Explicitly apply some settings that might not be fully handled by loadSettings() UI population
+    setSidebarCollapsed(globalSettings.ALWAYS_COLLAPSE_SIDEBAR === 'true');
 
     updateDisclosureTriangles();
     updateStarredMailboxVisibility();
@@ -455,6 +517,7 @@ async function toggleAccountActive(id, isActive) {
         if (res.ok) {
             await loadAccounts();
             renderAccountsInSettings();
+            notifyOpener();
             
             if (!isActive && currentAccountId === id) {
                 loadMailbox('INBOX');
@@ -506,6 +569,7 @@ async function removeAccount(id, email) {
         await loadAccounts();
         renderAccountsInSettings();
         renderContactsAccounts();
+        notifyOpener();
         if (currentAccountId === id) {
             loadMailbox('INBOX');
         }
@@ -515,15 +579,17 @@ async function removeAccount(id, email) {
 }
 
 function openSettings() {
-    document.getElementById('settings-modal').style.display = 'flex';
-    loadSettings();
-    renderAccountsInSettings();
-    renderContactsAccounts();
-    loadStats();
+    const url = '?settings=true';
+    window.open(url, '_blank', 'width=800,height=680');
 }
 function closeSettings() {
     saveAllSettings();
-    document.getElementById('settings-modal').style.display = 'none';
+    const modal = document.getElementById('settings-modal');
+    if (modal.classList.contains('standalone')) {
+        window.close();
+    } else {
+        modal.style.display = 'none';
+    }
 }
 
 async function clearLocalContacts() {
@@ -548,21 +614,37 @@ async function loadStats() {
         const res = await fetch('/stats');
         const data = await res.json();
         
+        const statusEl = document.getElementById('stats-status');
         if (data.error) {
-            document.getElementById('stats-status').innerText = 'Error';
-            document.getElementById('stats-status').style.color = 'red';
+            if (statusEl) {
+                statusEl.innerText = 'Error';
+                statusEl.style.color = 'red';
+            }
             return;
         }
 
-        document.getElementById('stats-status').innerText = 'Connected';
-        document.getElementById('stats-status').style.color = 'green';
+        if (statusEl) {
+            statusEl.innerText = 'Connected';
+            statusEl.style.color = 'green';
+        }
         
-        document.getElementById('stat-accounts').innerText = data.accounts;
-        document.getElementById('stat-recents').innerText = data.recent_contacts;
-        document.getElementById('stat-contacts').innerText = data.google_contacts;
-        document.getElementById('stat-db-size').innerText = formatBytes(data.db_size_bytes);
-        document.getElementById('stat-cache-size').innerText = formatBytes(data.cache_size_bytes);
-        document.getElementById('stat-deletion').innerText = data.deletion_scope_enabled ? 'Yes' : 'No (Modify only)';
+        const statAccounts = document.getElementById('stat-accounts');
+        if (statAccounts) statAccounts.innerText = data.accounts;
+        
+        const statRecents = document.getElementById('stat-recents');
+        if (statRecents) statRecents.innerText = data.recent_contacts;
+        
+        const statContacts = document.getElementById('stat-contacts');
+        if (statContacts) statContacts.innerText = data.google_contacts;
+        
+        const statDbSize = document.getElementById('stat-db-size');
+        if (statDbSize) statDbSize.innerText = formatBytes(data.db_size_bytes);
+        
+        const statCacheSize = document.getElementById('stat-cache-size');
+        if (statCacheSize) statCacheSize.innerText = formatBytes(data.cache_size_bytes);
+        
+        const statDeletion = document.getElementById('stat-deletion');
+        if (statDeletion) statDeletion.innerText = data.deletion_scope_enabled ? 'Yes' : 'No (Modify only)';
     } catch (err) {
         console.error("Failed to load stats", err);
     }
@@ -581,8 +663,11 @@ function switchTab(tab) {
     document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     
-    document.querySelector(`.modal-tab[data-tab="${tab}"]`).classList.add('active');
-    document.getElementById(`tab-${tab}`).classList.add('active');
+    const tabEl = document.querySelector(`.modal-tab[data-tab="${tab}"]`);
+    if (tabEl) tabEl.classList.add('active');
+    
+    const panelEl = document.getElementById(`tab-${tab}`);
+    if (panelEl) panelEl.classList.add('active');
 }
 
 function toggleDisclosure(event, label) {
@@ -604,7 +689,10 @@ async function loadMailbox(label, append = false, refresh = false) {
         currentAccountId = null;
         nextPageToken = null;
         renderSkeletons();
-        document.getElementById('view-name').innerText = label === '' ? 'All Mail' : label.charAt(0) + label.slice(1).toLowerCase();
+        const viewNameEl = document.getElementById('view-name');
+        if (viewNameEl) {
+            viewNameEl.innerText = label === '' ? 'All Mail' : label.charAt(0) + label.slice(1).toLowerCase();
+        }
         document.getElementById('search-input').value = '';
         hideMessageDetail();
         updateBanner(label);
@@ -628,7 +716,10 @@ async function loadMailbox(label, append = false, refresh = false) {
     const data = await res.json();
     nextPageToken = data.nextPageToken || null;
     
-    document.getElementById('load-more-btn').style.display = nextPageToken ? 'inline-block' : 'none';
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    if (loadMoreBtn) {
+        loadMoreBtn.style.display = nextPageToken ? 'inline-block' : 'none';
+    }
     renderMessages(data.messages, append);
 }
 
@@ -641,8 +732,12 @@ async function loadAccountMailbox(accId, email, label, append = false, refresh =
         currentAccountId = accId;
         nextPageToken = null;
         renderSkeletons();
-        document.getElementById('view-name').innerText = `${email} - ${label === '' ? 'All Mail' : label}`;
-        document.getElementById('search-input').value = '';
+        const viewNameEl = document.getElementById('view-name');
+        if (viewNameEl) {
+            viewNameEl.innerText = `${email} - ${label === '' ? 'All Mail' : label}`;
+        }
+        const searchInput = document.getElementById('search-input');
+        if (searchInput) searchInput.value = '';
         hideMessageDetail();
         updateBanner(label);
     }
@@ -656,7 +751,10 @@ async function loadAccountMailbox(accId, email, label, append = false, refresh =
     const data = await res.json();
     nextPageToken = data.nextPageToken || null;
 
-    document.getElementById('load-more-btn').style.display = nextPageToken ? 'inline-block' : 'none';
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    if (loadMoreBtn) {
+        loadMoreBtn.style.display = nextPageToken ? 'inline-block' : 'none';
+    }
     renderMessages(data.messages, append);
 }
 
@@ -665,29 +763,31 @@ function updateBanner(label) {
     const bannerText = document.getElementById('banner-text');
     const emptyBtn = document.getElementById('empty-mailbox-btn');
 
-    if (label === 'TRASH') {
-        banner.style.display = 'flex';
-        bannerText.innerText = 'Messages in Trash will be automatically deleted after 30 days.';
-        emptyBtn.innerText = 'Empty Trash Now';
-        emptyBtn.style.display = 'inline-block';
-    } else if (label === 'SPAM') {
-        banner.style.display = 'flex';
-        bannerText.innerText = 'Messages in Spam will be automatically deleted after 30 days.';
-        emptyBtn.innerText = 'Empty Spam Now';
-        emptyBtn.style.display = 'inline-block';
-    } else {
-        banner.style.display = 'none';
-    }
-    
-    if (label === 'TRASH' || label === 'SPAM') {
-        if (!globalSettings.CAN_PERMANENTLY_DELETE) {
-            emptyBtn.disabled = true;
-            emptyBtn.style.opacity = '0.5';
-            emptyBtn.title = 'Deletion scope not enabled in .env';
+    if (banner && bannerText && emptyBtn) {
+        if (label === 'TRASH') {
+            banner.style.display = 'flex';
+            bannerText.innerText = 'Messages in Trash will be automatically deleted after 30 days.';
+            emptyBtn.innerText = 'Empty Trash Now';
+            emptyBtn.style.display = 'inline-block';
+        } else if (label === 'SPAM') {
+            banner.style.display = 'flex';
+            bannerText.innerText = 'Messages in Spam will be automatically deleted after 30 days.';
+            emptyBtn.innerText = 'Empty Spam Now';
+            emptyBtn.style.display = 'inline-block';
         } else {
-            emptyBtn.disabled = false;
-            emptyBtn.style.opacity = '1';
-            emptyBtn.title = '';
+            banner.style.display = 'none';
+        }
+        
+        if (label === 'TRASH' || label === 'SPAM') {
+            if (!globalSettings.CAN_PERMANENTLY_DELETE) {
+                emptyBtn.disabled = true;
+                emptyBtn.style.opacity = '0.5';
+                emptyBtn.title = 'Deletion scope not enabled in .env';
+            } else {
+                emptyBtn.disabled = false;
+                emptyBtn.style.opacity = '1';
+                emptyBtn.title = '';
+            }
         }
     }
     
@@ -755,14 +855,18 @@ function loadMore() {
  * Perform message search
  */
 async function performSearch(append = false, refresh = false) {
-    const query = document.getElementById('search-input').value;
+    const searchInput = document.getElementById('search-input');
+    const query = searchInput ? searchInput.value : '';
     if (!query && !append) return;
 
     if (!append) {
         currentLabel = 'SEARCH';
         nextPageToken = null;
         renderSkeletons();
-        document.getElementById('view-name').innerText = `Search: ${query}`;
+        const viewNameEl = document.getElementById('view-name');
+        if (viewNameEl) {
+            viewNameEl.innerText = `Search: ${query}`;
+        }
         hideMessageDetail();
 
         // Remove active state from sidebar
@@ -912,10 +1016,16 @@ function createMessageRow(msg) {
  */
 function renderMessages(messages, append = false) {
     const list = document.getElementById('message-list');
+    if (!list) return;
+    
     if (!append) {
         list.innerHTML = '';
-        document.getElementById('multi-select-checkbox').checked = false;
-        document.getElementById('selection-info').style.display = 'none';
+        const multiSelect = document.getElementById('multi-select-checkbox');
+        if (multiSelect) multiSelect.checked = false;
+        
+        const selectionInfo = document.getElementById('selection-info');
+        if (selectionInfo) selectionInfo.style.display = 'none';
+        
         currentMessages = [];
     }
     if (!messages || messages.length === 0) {
@@ -1114,7 +1224,7 @@ async function performBatchAction(action) {
 /**
  * Refresh current mailbox view
  */
-function refreshMailbox() {
+window.refreshMailbox = function() {
     const btn = document.querySelector('#refresh-btn i');
     if (btn) btn.classList.add('fa-spin');
     
@@ -1133,7 +1243,7 @@ function refreshMailbox() {
 }
 
 /**
- * Handle messages from the detail iframe for auto-resizing
+ * Handle messages from the detail iframe for auto-resizing or from standalone windows for refresh
  */
 window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'detail_iframe_height') {
@@ -1170,8 +1280,35 @@ window.addEventListener('message', function(e) {
         } catch (err) {
             console.error('Failed to resize iframe from message', err);
         }
+    } else if (e.data && e.data.type === 'prosciutto_refresh') {
+        // Apply data immediately for low latency if provided
+        if (e.data.data) {
+            globalSettings = { ...globalSettings, ...e.data.data };
+            
+            // Re-apply immediate UI changes
+            if (globalSettings.THEME) applyTheme(globalSettings.THEME);
+            
+            setSidebarCollapsed(globalSettings.ALWAYS_COLLAPSE_SIDEBAR === 'true');
+            
+            updateStarredMailboxVisibility();
+            updateDisclosureTriangles();
+        }
+
+        // Still refresh from server to be 100% sure and update accounts
+        loadSettings();
+        loadAccounts().then(() => {
+            if (currentAccountId === null) {
+                loadMailbox(currentLabel);
+            }
+        });
     }
 });
+
+function notifyOpener(data = null) {
+    if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({ type: 'prosciutto_refresh', data: data }, window.location.origin);
+    }
+}
 
 /**
  * Render an existing draft in the composer
@@ -1227,7 +1364,7 @@ async function renderDraftInComposer(id, accId) {
 /**
  * Show message details in the side panel
  */
-async function showMessage(id, accId, isSingleView = false) {
+window.showMessage = async function(id, accId, isSingleView = false) {
     if (currentLabel === 'DRAFT') {
         renderDraftInComposer(id, accId);
         return;
@@ -1307,16 +1444,16 @@ async function showMessage(id, accId, isSingleView = false) {
         panel.innerHTML = `
             <div class="detail-header">
                 <div class="panel-actions display-flex gap-10 mb-15 align-center">
-                    <button class="action-btn" onclick="renderComposerInPanel('${msg.id}', ${accId}, 'reply')" title="Reply"><i class="fa-solid fa-reply"></i></button>
-                    <button class="action-btn" onclick="renderComposerInPanel('${msg.id}', ${accId}, 'replyAll')" title="Reply All"><i class="fa-solid fa-reply-all"></i></button>
-                    <button class="action-btn" onclick="renderComposerInPanel('${msg.id}', ${accId}, 'forward')" title="Forward"><i class="fa-solid fa-share"></i></button>
+                    <button class="action-btn" onclick="window.renderComposerInPanel('${msg.id}', ${accId}, 'reply')" title="Reply"><i class="fa-solid fa-reply"></i></button>
+                    <button class="action-btn" onclick="window.renderComposerInPanel('${msg.id}', ${accId}, 'replyAll')" title="Reply All"><i class="fa-solid fa-reply-all"></i></button>
+                    <button class="action-btn" onclick="window.renderComposerInPanel('${msg.id}', ${accId}, 'forward')" title="Forward"><i class="fa-solid fa-share"></i></button>
                     <div class="panel-spacer"></div>
-                    <button class="action-btn" id="toggle-read-btn" onclick="toggleReadStatus('${msg.id}', ${accId}, ${isUnread})" title="${isUnread ? 'Mark as Read' : 'Mark as Unread'}">
+                    <button class="action-btn" id="toggle-read-btn" onclick="window.toggleReadStatus('${msg.id}', ${accId}, ${isUnread})" title="${isUnread ? 'Mark as Read' : 'Mark as Unread'}">
                         <i class="fa-solid ${isUnread ? 'fa-envelope-open' : 'fa-envelope'}"></i>
                     </button>
-                    <button class="action-btn" onclick="archiveMessage('${msg.id}', ${accId})" title="Archive"><i class="fa-solid fa-box-archive"></i></button>
-                    <button class="action-btn" id="label-picker-btn" onclick="showLabelPicker(event, '${msg.id}', ${accId})" title="Label"><i class="fa-solid fa-tag"></i></button>
-                    <button class="action-btn" onclick="trashMessage('${msg.id}', ${accId})" title="${trashTitle}" ${trashDisabledAttr} ${trashStyleAttr}><i class="fa-solid ${trashIcon}"></i></button>
+                    <button class="action-btn" onclick="window.archiveMessage('${msg.id}', ${accId})" title="Archive"><i class="fa-solid fa-box-archive"></i></button>
+                    <button class="action-btn" id="label-picker-btn" onclick="window.showLabelPicker(event, '${msg.id}', ${accId})" title="Label"><i class="fa-solid fa-tag"></i></button>
+                    <button class="action-btn" onclick="window.trashMessage('${msg.id}', ${accId})" title="${trashTitle}" ${trashDisabledAttr} ${trashStyleAttr}><i class="fa-solid ${trashIcon}"></i></button>
                     ${isSingleView ? '' : '<span class="back-btn ml-10" onclick="hideMessageDetail()"><i class="fa-solid fa-xmark"></i></span>'}
                 </div>
                 <div class="detail-subject">
@@ -1372,7 +1509,7 @@ async function showMessage(id, accId, isSingleView = false) {
     }
 }
 
-function loadImages() {
+window.loadImages = function() {
     const panel = document.getElementById('message-detail-panel');
     const msg = JSON.parse(panel.dataset.currentMessage);
     const banner = document.getElementById('remote-images-banner');
@@ -1524,7 +1661,7 @@ window.toggleComposeFormat = function(checkbox) {
 /**
  * Render composer in the side panel (for replies/forwards)
  */
-function renderComposerInPanel(id, accId, action) {
+window.renderComposerInPanel = function(id, accId, action) {
     const panel = document.getElementById('message-detail-panel');
     const msg = JSON.parse(panel.dataset.currentMessage);
     const isSingleView = panel.classList.contains('single-view');
@@ -1804,7 +1941,7 @@ function forwardMessage(id, accId) {
     renderComposerInPanel(id, accId, 'forward');
 }
 
-async function toggleReadStatus(id, accId, currentlyUnread) {
+window.toggleReadStatus = async function(id, accId, currentlyUnread) {
     const addLabelIds = currentlyUnread ? [] : ['UNREAD'];
     const removeLabelIds = currentlyUnread ? ['UNREAD'] : [];
     
@@ -1819,6 +1956,7 @@ async function toggleReadStatus(id, accId, currentlyUnread) {
     });
     
     if (res.ok) {
+        notifyOpener();
         const isNowUnread = !currentlyUnread;
         const listDot = document.querySelector(`#msg-${id} .unread-dot`);
         if (listDot) {
@@ -1834,20 +1972,20 @@ async function toggleReadStatus(id, accId, currentlyUnread) {
         if (toggleIcon) {
             toggleIcon.innerHTML = `<i class="fa-solid ${isNowUnread ? 'fa-envelope-open' : 'fa-envelope'}"></i>`;
             toggleIcon.title = isNowUnread ? 'Mark as Read' : 'Mark as Unread';
-            toggleIcon.setAttribute('onclick', `toggleReadStatus('${id}', ${accId}, ${isNowUnread})`);
+            toggleIcon.setAttribute('onclick', `window.toggleReadStatus('${id}', ${accId}, ${isNowUnread})`);
         }
         const hoverToggleBtn = document.querySelector(`#msg-${id} .toggle-read`);
         if (hoverToggleBtn) {
             hoverToggleBtn.innerHTML = `<i class="fa-solid ${isNowUnread ? 'fa-envelope-open' : 'fa-envelope'}"></i>`;
             hoverToggleBtn.title = isNowUnread ? 'Mark as Read' : 'Mark as Unread';
-            hoverToggleBtn.setAttribute('onclick', `event.stopPropagation(); toggleReadStatus('${id}', ${accId}, ${isNowUnread})`);
+            hoverToggleBtn.setAttribute('onclick', `event.stopPropagation(); window.toggleReadStatus('${id}', ${accId}, ${isNowUnread})`);
         }
     } else {
         alert("Failed to update status");
     }
 }
 
-async function archiveMessage(id, accId) {
+window.archiveMessage = async function(id, accId) {
     const res = await fetch(`/accounts/${accId}/messages/batch-modify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1857,14 +1995,20 @@ async function archiveMessage(id, accId) {
         })
     });
     if (res.ok) {
-        hideMessageDetail();
-        refreshMailbox();
+        notifyOpener();
+        const panel = document.getElementById('message-detail-panel');
+        if (panel && panel.classList.contains('single-view')) {
+            window.close();
+        } else {
+            hideMessageDetail();
+            window.refreshMailbox();
+        }
     } else {
         alert("Failed to archive");
     }
 }
 
-async function trashMessage(id, accId) {
+window.trashMessage = async function(id, accId) {
     const isTrashOrSpam = currentLabel === 'TRASH' || currentLabel === 'SPAM';
     
     if (isTrashOrSpam) {
@@ -1876,8 +2020,14 @@ async function trashMessage(id, accId) {
             method: 'DELETE'
         });
         if (res.ok) {
-            hideMessageDetail();
-            refreshMailbox();
+            notifyOpener();
+            const panel = document.getElementById('message-detail-panel');
+            if (panel && panel.classList.contains('single-view')) {
+                window.close();
+            } else {
+                hideMessageDetail();
+                window.refreshMailbox();
+            }
         } else {
             alert("Failed to permanently delete message");
         }
@@ -1893,14 +2043,20 @@ async function trashMessage(id, accId) {
         })
     });
     if (res.ok) {
-        hideMessageDetail();
-        refreshMailbox();
+        notifyOpener();
+        const panel = document.getElementById('message-detail-panel');
+        if (panel && panel.classList.contains('single-view')) {
+            window.close();
+        } else {
+            hideMessageDetail();
+            window.refreshMailbox();
+        }
     } else {
         alert("Failed to move to trash");
     }
 }
 
-async function showLabelPicker(event, msgId, accId) {
+window.showLabelPicker = async function(event, msgId, accId) {
     event.stopPropagation();
     
     const existing = document.getElementById('label-picker-dropdown');
@@ -1959,7 +2115,7 @@ async function showLabelPicker(event, msgId, accId) {
     }
 }
 
-async function applyLabel(msgId, accId, labelId) {
+window.applyLabel = async function(msgId, accId, labelId) {
     try {
         const res = await fetch(`/accounts/${accId}/messages/batch-modify`, {
             method: 'POST',
@@ -1970,7 +2126,10 @@ async function applyLabel(msgId, accId, labelId) {
             })
         });
         
-        if (!res.ok) {
+        if (res.ok) {
+            notifyOpener();
+            window.refreshMailbox();
+        } else {
             const error = await res.json();
             alert("Error applying label: " + (error.detail || "Unknown error"));
         }
@@ -1986,12 +2145,14 @@ function openMessageInNewWindow(id, accId) {
         accId = activeAcc ? activeAcc.id : null;
     }
     const url = `?messageId=${id}&accountId=${accId}`;
-    window.open(url, '_blank', 'width=800,height=600');
+    window.open(url, '_blank', 'width=800,height=680');
 }
 
 function hideMessageDetail() {
     const panel = document.getElementById('message-detail-panel');
-    panel.classList.remove('open');
+    if (panel) {
+        panel.classList.remove('open');
+    }
     document.querySelectorAll('.message-item').forEach(item => item.classList.remove('selected'));
 }
 
@@ -2109,7 +2270,7 @@ function showComposer() {
         const activeAcc = accounts.find(a => a.is_active) || accounts[0];
         const accId = currentAccountId || (activeAcc ? activeAcc.id : '');
         const url = `?compose=true&accountId=${accId}`;
-        window.open(url, '_blank', 'width=800,height=700');
+        window.open(url, '_blank', 'width=800,height=680');
     } else {
         renderNewComposerInPanel(currentAccountId);
     }
@@ -2126,19 +2287,26 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
     }
 });
 
-function toggleSidebarCollapse() {
+function setSidebarCollapsed(collapsed) {
     const sidebar = document.getElementById('sidebar');
     const icon = document.getElementById('sidebar-toggle-icon');
-    
-    sidebar.classList.toggle('collapsed');
-    
-    if (sidebar.classList.contains('collapsed')) {
+    if (!sidebar || !icon) return;
+
+    if (collapsed) {
+        sidebar.classList.add('collapsed');
         icon.classList.remove('fa-chevron-left');
         icon.classList.add('fa-chevron-right');
     } else {
+        sidebar.classList.remove('collapsed');
         icon.classList.remove('fa-chevron-right');
         icon.classList.add('fa-chevron-left');
     }
+}
+
+function toggleSidebarCollapse() {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+    setSidebarCollapsed(!sidebar.classList.contains('collapsed'));
 }
 
 function expandSidebarIfCollapsed(event) {
