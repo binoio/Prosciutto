@@ -2,7 +2,8 @@ import pytest
 import os
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
-from backend.main import app, get_session
+from backend.main import app
+from backend.db import get_session
 from backend.models import Account, Setting
 from sqlmodel import Session, SQLModel, create_engine
 from sqlmodel.pool import StaticPool
@@ -65,8 +66,8 @@ class MockBatch:
             else:
                 self.callback(request_id, None, Exception("Not found"))
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_list_messages(mock_creds_class, mock_build, client: TestClient, session: Session):
     # Add an account
     account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
@@ -96,8 +97,8 @@ def test_list_messages(mock_creds_class, mock_build, client: TestClient, session
     assert len(data["messages"]) == 1
     assert data["messages"][0]["snippet"] == "Hello"
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_send_email(mock_creds_class, mock_build, client: TestClient, session: Session):
     account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
     session.add(account)
@@ -119,8 +120,8 @@ def test_send_email(mock_creds_class, mock_build, client: TestClient, session: S
     assert response.status_code == 200
     assert response.json()["message"] == "Email sent"
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_search_messages(mock_creds_class, mock_build, client: TestClient, session: Session):
     account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
     session.add(account)
@@ -167,8 +168,8 @@ def test_search_messages(mock_creds_class, mock_build, client: TestClient, sessi
     assert data["messages"][0]["subject"] == "Found it"
     assert data["nextPageToken"] == "token123"
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_unified_inbox(mock_creds_class, mock_build, client: TestClient, session: Session):
     acc1 = Account(email="a1@example.com", credentials_json='{"token": "f1"}', is_active=True)
     acc2 = Account(email="a2@example.com", credentials_json='{"token": "f2"}', is_active=True)
@@ -195,8 +196,8 @@ def test_unified_inbox(mock_creds_class, mock_build, client: TestClient, session
     assert response.status_code == 200
     assert len(response.json()["messages"]) == 2
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_get_message(mock_creds_class, mock_build, client: TestClient, session: Session):
     account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
     session.add(account)

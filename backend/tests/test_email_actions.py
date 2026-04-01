@@ -1,7 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
-from backend.main import app, get_session
+from backend.main import app
+from backend.db import get_session
 from backend.models import Account
 from sqlmodel import Session, SQLModel, create_engine
 import os
@@ -28,8 +29,8 @@ def client_fixture(session: Session):
     yield client
     app.dependency_overrides.clear()
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_get_message_detailed_headers(mock_creds_class, mock_build, client: TestClient, session: Session):
     account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
     session.add(account)
@@ -73,8 +74,8 @@ def test_get_message_detailed_headers(mock_creds_class, mock_build, client: Test
     assert data["to"] == "me@example.com"
     assert data["cc"] == "cc@example.com"
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_send_email_with_threading(mock_creds_class, mock_build, client: TestClient, session: Session):
     account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
     session.add(account)
@@ -111,8 +112,8 @@ def test_send_email_with_threading(mock_creds_class, mock_build, client: TestCli
     assert "In-Reply-To: <msg-id-123@google.com>" in raw_msg
     assert "References: <ref-id-000@google.com> <msg-id-123@google.com>" in raw_msg
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_reply_all_threading(mock_creds_class, mock_build, client: TestClient, session: Session):
     account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
     session.add(account)
@@ -147,8 +148,8 @@ def test_reply_all_threading(mock_creds_class, mock_build, client: TestClient, s
     assert "in-reply-to: <msg-id-123@google.com>" in raw_msg.lower()
     assert "references: <ref-id-000@google.com> <msg-id-123@google.com>" in raw_msg.lower()
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_delete_message(mock_creds_class, mock_build, client: TestClient, session: Session):
     account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
     session.add(account)
@@ -169,8 +170,8 @@ def test_delete_message(mock_creds_class, mock_build, client: TestClient, sessio
     # Verify Gmail API call
     mock_service.users().messages().delete.assert_called_with(userId="me", id="msg123")
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_batch_delete_messages(mock_creds_class, mock_build, client: TestClient, session: Session):
     account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
     session.add(account)

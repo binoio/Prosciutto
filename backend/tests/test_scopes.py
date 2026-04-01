@@ -1,7 +1,7 @@
 import os
 import pytest
 from unittest.mock import patch
-from backend.main import get_requested_scopes
+from backend.core.config import get_requested_scopes
 
 def test_get_requested_scopes_no_env():
     # Mock os.path.exists to return False for .env

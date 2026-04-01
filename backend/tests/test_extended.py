@@ -1,7 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
-from backend.main import app, get_session
+from backend.main import app
+from backend.db import get_session
 from backend.models import Account
 from sqlmodel import Session, SQLModel, create_engine
 from sqlmodel.pool import StaticPool
@@ -13,8 +14,8 @@ def session_fixture():
     if os.path.exists(db_file):
         os.remove(db_file)
     engine = create_engine(f"sqlite:///{db_file}")
-    from backend.main import cache
-    cache.clear()
+    from diskcache import Cache
+    Cache(".cache_dir").clear()
     SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
         yield session
@@ -47,8 +48,8 @@ class MockBatch:
             else:
                 self.callback(request_id, None, Exception("Not found"))
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_unread_dot_presence_backend(mock_creds_class, mock_build, client: TestClient, session: Session):
     # Add an account
     account = Account(email="test@example.com", credentials_json='{"token": "fake"}', is_active=True)
@@ -119,8 +120,8 @@ def test_unread_dot_presence_frontend():
     assert ".unread-dot {" in css_content
     assert "background-color: #1a73e8;" in css_content # Blue
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_unified_inbox_message_count(mock_creds_class, mock_build, client: TestClient, session: Session):
     # Add two accounts
     acc1 = Account(email="a1@example.com", credentials_json='{"token": "f1"}', is_active=True)
@@ -148,7 +149,7 @@ def test_unified_inbox_message_count(mock_creds_class, mock_build, client: TestC
         return MagicMock()
 
     # Re-patch to handle different accounts
-    with patch("backend.main.get_gmail_service") as mock_get_service:
+    with patch("backend.services.unified_service.get_gmail_service") as mock_get_service:
         s1 = MagicMock()
         s2 = MagicMock()
         mock_get_service.side_effect = [s1, s2]
@@ -190,8 +191,8 @@ def test_unified_inbox_message_count(mock_creds_class, mock_build, client: TestC
         # If we want it to be ACCURATE, it should be 50 if there are 50.
         assert len(data["messages"]) == 50
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_unified_inbox_pagination(mock_creds_class, mock_build, client: TestClient, session: Session):
     import base64
     import json
@@ -207,7 +208,7 @@ def test_unified_inbox_pagination(mock_creds_class, mock_build, client: TestClie
     mock_creds.expired = False
     mock_creds_class.from_authorized_user_info.return_value = mock_creds
     
-    with patch("backend.main.get_gmail_service") as mock_get_service:
+    with patch("backend.services.unified_service.get_gmail_service") as mock_get_service:
         s1 = MagicMock()
         s2 = MagicMock()
         mock_get_service.side_effect = [s1, s2, s1, s2] # Needed for two separate calls
@@ -261,8 +262,8 @@ def test_unified_inbox_pagination(mock_creds_class, mock_build, client: TestClie
         decoded_token2 = json.loads(base64.urlsafe_b64decode(encoded_token2).decode("utf-8"))
         assert decoded_token2 == {str(acc2.id): "a2_token2"}
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_unified_search(mock_creds_class, mock_build, client: TestClient, session: Session):
     # Add two accounts
     acc1 = Account(email="a1@example.com", credentials_json='{"token": "f1"}', is_active=True)
@@ -275,7 +276,7 @@ def test_unified_search(mock_creds_class, mock_build, client: TestClient, sessio
     mock_creds.expired = False
     mock_creds_class.from_authorized_user_info.return_value = mock_creds
     
-    with patch("backend.main.get_gmail_service") as mock_get_service:
+    with patch("backend.services.unified_service.get_gmail_service") as mock_get_service:
         s1 = MagicMock()
         s2 = MagicMock()
         mock_get_service.side_effect = [s1, s2]
