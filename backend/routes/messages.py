@@ -38,6 +38,18 @@ class SendEmailRequest(BaseModel):
     inReplyTo: Optional[str] = None
     references: Optional[str] = None
 
+class SaveDraftRequest(BaseModel):
+    to: Optional[str] = ""
+    subject: Optional[str] = ""
+    body: Optional[str] = ""
+    cc: Optional[str] = None
+    bcc: Optional[str] = None
+    isHtml: Optional[bool] = False
+    threadId: Optional[str] = None
+    inReplyTo: Optional[str] = None
+    references: Optional[str] = None
+    draftId: Optional[str] = None
+
 class BatchModifyRequest(BaseModel):
     ids: List[str]
     addLabelIds: List[str] = []
@@ -265,6 +277,57 @@ async def batch_modify_messages(account_id: int, request: BatchModifyRequest, se
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/accounts/{account_id}/drafts")
+async def save_draft(account_id: int, request: SaveDraftRequest, session: Session = Depends(get_session)):
+    service = get_gmail_service(account_id, session)
+    if not service:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    try:
+        cache.clear()
+        message = MIMEText(request.body or "", 'html' if request.isHtml else 'plain')
+        message["to"] = request.to or ""
+        message["subject"] = request.subject or ""
+        if request.cc:
+            message["cc"] = request.cc
+        if request.bcc:
+            message["bcc"] = request.bcc
+        if request.inReplyTo:
+            message["In-Reply-To"] = request.inReplyTo
+        if request.references:
+            message["References"] = request.references
+        
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        
+        draft_body = {
+            "message": {
+                "raw": raw_message
+            }
+        }
+        if request.threadId:
+            draft_body["message"]["threadId"] = request.threadId
+            
+        if request.draftId:
+            # Update existing draft
+            result = service.users().drafts().update(
+                userId="me",
+                id=request.draftId,
+                body=draft_body
+            ).execute()
+            msg = "Draft updated"
+        else:
+            # Create new draft
+            result = service.users().drafts().create(
+                userId="me",
+                body=draft_body
+            ).execute()
+            msg = "Draft created"
+        
+        return {"message": msg, "draft": result}
+    except Exception as e:
+        logger.error(f"Error saving draft: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/accounts/{account_id}/send")
