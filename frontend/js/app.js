@@ -1330,14 +1330,30 @@ window.toggleComposeField = function(field) {
     if (toggle) toggle.style.display = 'none';
 }
 
+window.execCommand = function(command, value = null) {
+    document.execCommand(command, false, value);
+    const htmlDiv = document.getElementById('panel-compose-body-html');
+    if (htmlDiv) htmlDiv.focus();
+}
+
+window.createLink = function() {
+    const url = prompt("Enter the URL:");
+    if (url) {
+        window.execCommand('createLink', url);
+    }
+}
+
 function toggleComposeFormat(checkbox) {
     const htmlDiv = document.getElementById('panel-compose-body-html');
     const textArea = document.getElementById('panel-compose-body');
+    const toolbar = document.getElementById('panel-compose-toolbar');
+    
     if (checkbox.checked) {
         // Switch to HTML
         htmlDiv.innerHTML = textArea.value.replace(/\n/g, '<br>');
         htmlDiv.style.display = 'block';
         textArea.style.display = 'none';
+        if (toolbar) toolbar.classList.remove('display-none');
     } else {
         // Switch to Text
         let text = htmlDiv.innerHTML.replace(/<br\s*[\/]?>/gi, '\n').replace(/<\/p>/gi, '\n\n').replace(/<\/div>/gi, '\n');
@@ -1346,6 +1362,7 @@ function toggleComposeFormat(checkbox) {
         textArea.value = tempDiv.innerText || tempDiv.textContent;
         textArea.style.display = 'block';
         htmlDiv.style.display = 'none';
+        if (toolbar) toolbar.classList.add('display-none');
     }
 }
 
@@ -1438,6 +1455,20 @@ function renderComposerInPanel(id, accId, action) {
                     <label class="font-12 cursor-pointer text-gray">
                         <input type="checkbox" id="panel-compose-is-html" onchange="toggleComposeFormat(this)" ${useHtml ? 'checked' : ''}> HTML Format
                     </label>
+                </div>
+                <div id="panel-compose-toolbar" class="composer-toolbar ${useHtml ? '' : 'display-none'}">
+                    <button type="button" class="toolbar-btn" onclick="execCommand('bold')" title="Bold"><i class="fa-solid fa-bold"></i></button>
+                    <button type="button" class="toolbar-btn" onclick="execCommand('italic')" title="Italic"><i class="fa-solid fa-italic"></i></button>
+                    <button type="button" class="toolbar-btn" onclick="execCommand('underline')" title="Underline"><i class="fa-solid fa-underline"></i></button>
+                    <div class="toolbar-divider"></div>
+                    <button type="button" class="toolbar-btn" onclick="execCommand('insertUnorderedList')" title="Bullet List"><i class="fa-solid fa-list-ul"></i></button>
+                    <button type="button" class="toolbar-btn" onclick="execCommand('insertOrderedList')" title="Numbered List"><i class="fa-solid fa-list-ol"></i></button>
+                    <div class="toolbar-divider"></div>
+                    <button type="button" class="toolbar-btn" onclick="execCommand('outdent')" title="Outdent"><i class="fa-solid fa-outdent"></i></button>
+                    <button type="button" class="toolbar-btn" onclick="execCommand('indent')" title="Indent"><i class="fa-solid fa-indent"></i></button>
+                    <div class="toolbar-divider"></div>
+                    <button type="button" class="toolbar-btn" onclick="createLink()" title="Insert Link"><i class="fa-solid fa-link"></i></button>
+                    <button type="button" class="toolbar-btn" onclick="execCommand('unlink')" title="Remove Link"><i class="fa-solid fa-link-slash"></i></button>
                 </div>
                 <div class="form-group flex-1 display-flex flex-column border-none mt-5">
                     <div id="panel-compose-body-html" contenteditable="true" class="${useHtml ? 'display-block' : 'display-none'} composer-body-editable">${bodyHtml}</div>
@@ -1793,6 +1824,20 @@ function renderNewComposerInPanel(accId) {
                     <label class="font-12 cursor-pointer text-gray">
                         <input type="checkbox" id="panel-compose-is-html" onchange="toggleComposeFormat(this)" ${useHtml ? 'checked' : ''}> HTML Format
                     </label>
+                </div>
+                <div id="panel-compose-toolbar" class="composer-toolbar ${useHtml ? '' : 'display-none'}">
+                    <button type="button" class="toolbar-btn" onclick="execCommand('bold')" title="Bold"><i class="fa-solid fa-bold"></i></button>
+                    <button type="button" class="toolbar-btn" onclick="execCommand('italic')" title="Italic"><i class="fa-solid fa-italic"></i></button>
+                    <button type="button" class="toolbar-btn" onclick="execCommand('underline')" title="Underline"><i class="fa-solid fa-underline"></i></button>
+                    <div class="toolbar-divider"></div>
+                    <button type="button" class="toolbar-btn" onclick="execCommand('insertUnorderedList')" title="Bullet List"><i class="fa-solid fa-list-ul"></i></button>
+                    <button type="button" class="toolbar-btn" onclick="execCommand('insertOrderedList')" title="Numbered List"><i class="fa-solid fa-list-ol"></i></button>
+                    <div class="toolbar-divider"></div>
+                    <button type="button" class="toolbar-btn" onclick="execCommand('outdent')" title="Outdent"><i class="fa-solid fa-outdent"></i></button>
+                    <button type="button" class="toolbar-btn" onclick="execCommand('indent')" title="Indent"><i class="fa-solid fa-indent"></i></button>
+                    <div class="toolbar-divider"></div>
+                    <button type="button" class="toolbar-btn" onclick="createLink()" title="Insert Link"><i class="fa-solid fa-link"></i></button>
+                    <button type="button" class="toolbar-btn" onclick="execCommand('unlink')" title="Remove Link"><i class="fa-solid fa-link-slash"></i></button>
                 </div>
                 <div class="form-group flex-1 display-flex flex-column border-none mt-5">
                     <div id="panel-compose-body-html" contenteditable="true" class="${useHtml ? 'display-block' : 'display-none'} composer-body-editable"></div>
