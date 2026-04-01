@@ -1452,9 +1452,13 @@ function renderComposerInPanel(id, accId, action) {
                     <input type="text" id="panel-compose-subject" value="${subject.replace(/"/g, '&quot;')}">
                 </div>
                 <div class="display-flex justify-between align-center mt-10">
-                    <label class="font-12 cursor-pointer text-gray">
-                        <input type="checkbox" id="panel-compose-is-html" onchange="toggleComposeFormat(this)" ${useHtml ? 'checked' : ''}> HTML Format
-                    </label>
+                    <div class="display-flex align-center">
+                        <label class="switch">
+                            <input type="checkbox" id="panel-compose-is-html" onchange="toggleComposeFormat(this)" ${useHtml ? 'checked' : ''}>
+                            <span class="slider"></span>
+                        </label>
+                        <span class="font-13 text-gray">HTML Mode</span>
+                    </div>
                 </div>
                 <div id="panel-compose-toolbar" class="composer-toolbar ${useHtml ? '' : 'display-none'}">
                     <button type="button" class="toolbar-btn" onclick="execCommand('bold')" title="Bold"><i class="fa-solid fa-bold"></i></button>
@@ -1821,9 +1825,13 @@ function renderNewComposerInPanel(accId) {
                     <input type="text" id="panel-compose-subject" value="">
                 </div>
                 <div class="display-flex justify-between align-center mt-10">
-                    <label class="font-12 cursor-pointer text-gray">
-                        <input type="checkbox" id="panel-compose-is-html" onchange="toggleComposeFormat(this)" ${useHtml ? 'checked' : ''}> HTML Format
-                    </label>
+                    <div class="display-flex align-center">
+                        <label class="switch">
+                            <input type="checkbox" id="panel-compose-is-html" onchange="toggleComposeFormat(this)" ${useHtml ? 'checked' : ''}>
+                            <span class="slider"></span>
+                        </label>
+                        <span class="font-13 text-gray">HTML Mode</span>
+                    </div>
                 </div>
                 <div id="panel-compose-toolbar" class="composer-toolbar ${useHtml ? '' : 'display-none'}">
                     <button type="button" class="toolbar-btn" onclick="execCommand('bold')" title="Bold"><i class="fa-solid fa-bold"></i></button>
