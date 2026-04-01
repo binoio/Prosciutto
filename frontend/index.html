@@ -3,7 +3,7 @@
 <head>
     <title>Prosciutto</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link rel="stylesheet" href="styles/styles.css?v=34">
+    <link rel="stylesheet" href="styles/styles.css">
 </head>
 <body>
     <div id="sidebar">
@@ -56,46 +56,40 @@
             <div class="sidebar-labels-header">Labels</div>
             <div id="labels-container"></div>
         </div>
-        
+
         <div id="sidebar-toggle-widget" onclick="toggleSidebarCollapse()">
-            <i id="sidebar-toggle-icon" class="fa-solid fa-chevron-left"></i>
+            <i class="fa-solid fa-chevron-left"></i>
         </div>
     </div>
-    <div id="main">
-        <div id="header">
-            <div id="view-ctl">
-	            <h2 id="view-name">Inbox</h2>
-                <div id="refresh-btn" onclick="refreshMailbox()" title="Refresh"><i class="fa-solid fa-rotate-right"></i></div>
-	        </div>
-            <div id="search-container">
-                <div class="search-inner">
-                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                    <input type="text" id="search-input" placeholder="Search mail" onkeydown="if(event.key === 'Enter') performSearch()">
-                    <i class="fa-solid fa-sliders" id="advanced-search-toggle" onclick="toggleAdvancedSearch(event)" title="Show search options"></i>
-                    
-                    <div id="advanced-search-dropdown" class="advanced-search-dropdown" onclick="event.stopPropagation()">
+
+    <div id="header">
+        <div id="search-container">
+            <div class="search-bar-wrapper">
+                <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                <input type="text" id="search-input" placeholder="Search mail" onkeyup="handleSearch(event)">
+                <div class="search-actions">
+                    <div id="advanced-search-trigger" onclick="toggleAdvancedSearch(event)">
+                        <i class="fa-solid fa-sliders"></i>
+                    </div>
+                    <div id="advanced-search-panel" class="advanced-search-panel" onclick="event.stopPropagation()">
                         <div class="advanced-search-form">
-                            <div class="form-row">
+                            <div class="form-group">
                                 <label>From</label>
                                 <input type="text" id="adv-from">
                             </div>
-                            <div class="form-row">
+                            <div class="form-group">
+                                <label>To</label>
+                                <input type="text" id="adv-to">
+                            </div>
+                            <div class="form-group">
                                 <label>Subject</label>
                                 <input type="text" id="adv-subject">
                             </div>
-                            <div class="form-row">
+                            <div class="form-group">
                                 <label>Has words</label>
-                                <input type="text" id="adv-body">
+                                <input type="text" id="adv-q">
                             </div>
-                            <div class="form-row">
-                                <label>Date Range</label>
-                                <div class="adv-search-date-range">
-                                    <input type="date" id="adv-date-after" class="flex-1">
-                                    <span class="adv-search-date-sep">to</span>
-                                    <input type="date" id="adv-date-before" class="flex-1">
-                                </div>
-                            </div>
-                            <div class="form-row">
+                            <div class="form-group">
                                 <label>Has attachment</label>
                                 <input type="checkbox" id="adv-has-attachment">
                             </div>
@@ -149,148 +143,100 @@
                     <button id="load-more-btn" class="compose-btn btn-large display-none" onclick="loadMore()">Load More</button>
                 </div>
             </div>
-            
+
             <div id="message-detail-panel">
                 <!-- Message details will be loaded here -->
             </div>
         </div>
     </div>
 
-    <!-- Settings Modal -->
-    <div id="settings-modal" class="modal-overlay">
-        <div class="modal-container">
+    <!-- Modals -->
+    <div id="settings-modal" class="modal">
+        <div class="modal-content">
             <div class="modal-header">
                 <h3>Settings</h3>
-                <span class="cursor-pointer" onclick="closeSettings()">✖</span>
+                <span class="close-modal" onclick="closeSettings()">&times;</span>
+            </div>
+            <div class="modal-tabs">
+                <div class="modal-tab active" onclick="switchTab('accounts')">Accounts</div>
+                <div class="modal-tab" onclick="switchTab('general')">General</div>
+                <div class="modal-tab" onclick="switchTab('autocomplete')">Auto-complete</div>
+                <div class="modal-tab" onclick="switchTab('advanced')">Advanced</div>
             </div>
             <div class="modal-body">
-                <div class="modal-tabs">
-                    <div class="modal-tab active" onclick="switchTab('general')" data-tab="general">General</div>
-                    <div class="modal-tab" onclick="switchTab('accounts')" data-tab="accounts">Accounts</div>
-                    <div class="modal-tab" onclick="switchTab('appearance')" data-tab="appearance">Appearance</div>
-                    <div class="modal-tab" onclick="switchTab('privacy')" data-tab="privacy">Privacy</div>
-                    <div class="modal-tab" onclick="switchTab('contacts')" data-tab="contacts">Contacts</div>
-                    <div class="modal-tab" onclick="switchTab('advanced')" data-tab="advanced">Advanced</div>
+                <!-- Accounts Tab -->
+                <div id="tab-accounts" class="tab-panel active">
+                    <div id="accounts-list">
+                        <!-- Accounts will be rendered here -->
+                    </div>
+                    <button class="compose-btn btn-inline" onclick="addAccount()">Add Account</button>
                 </div>
-                <div class="modal-content">
-                    <!-- General Tab -->
-                    <div id="tab-general" class="tab-panel active">
-                        <h4>Behavior</h4>
-                        <div class="display-flex align-center gap-10">
-                            <input type="checkbox" id="setting-compose-window" class="checkbox-inline" onchange="saveAllSettings()">
-                            <label for="setting-compose-window">Compose new messages in their own window</label>
-                        </div>
-                        <div class="display-flex align-center gap-10 mt-10">
-                            <input type="checkbox" id="setting-warn-delete" class="checkbox-inline" onchange="saveAllSettings()">
-                            <label for="setting-warn-delete">Warn before permanently deleting messages</label>
-                        </div>
-                        <div class="display-flex align-center gap-10 mt-10">
-                            <input type="checkbox" id="setting-compose-html" class="checkbox-inline" onchange="saveAllSettings()">
-                            <label for="setting-compose-html">Compose new messages as HTML</label>
-                        </div>
-                        <div class="display-flex align-center gap-10 mt-10">
-                            <input type="checkbox" id="setting-mark-read" class="checkbox-inline" onchange="saveAllSettings()">
-                            <label for="setting-mark-read">Mark messages as read automatically after 3 seconds</label>
-                        </div>
+
+                <!-- General Tab -->
+                <div id="tab-general" class="tab-panel">
+                    <div class="form-group">
+                        <label>Theme</label>
+                        <select id="setting-theme" onchange="saveAllSettings()">
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                            <option value="system">System Default</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <input type="checkbox" id="setting-compose-window" class="checkbox-inline" onchange="saveAllSettings()">
+                        <label for="setting-compose-window">Compose new messages in their own window</label>
+                    </div>
+                    <div class="form-group">
+                        <input type="checkbox" id="setting-compose-html" class="checkbox-inline" onchange="saveAllSettings()">
+                        <label for="setting-compose-html">Compose new messages as HTML</label>
+                    </div>
+                </div>
+
+                <!-- Auto-complete Tab -->
+                <div id="tab-autocomplete" class="tab-panel">
+                    <div class="display-flex align-center gap-10 mb-20">
+                        <input type="checkbox" id="setting-autocomplete-recents" class="checkbox-inline" onchange="saveAllSettings()">
+                        <label for="setting-autocomplete-recents" class="text-gray">Auto-complete from Recents</label>
                     </div>
 
-                    <!-- Accounts Tab -->
-                    <div id="tab-accounts" class="tab-panel">
-                        <div class="display-flex justify-between align-center mb-20">
-                            <h4>Connected Accounts</h4>
-                            <button class="compose-btn btn-inline" onclick="addAccount()">Add Account</button>
-                        </div>
-                        <div id="accounts-list-settings">
-                            <!-- Accounts listed here -->
-                        </div>
+                    <h4>Auto-complete from Account Contacts</h4>
+                    <div id="contacts-accounts-list" class="mt-10">
+                        <!-- Account toggles will be rendered here -->
                     </div>
 
-                    <!-- Appearance Tab -->
-                    <div id="tab-appearance" class="tab-panel">
-                        <h4>Theme</h4>
-                        <div class="form-group border-none">
-                            <select id="setting-theme" onchange="saveAllSettings()">
-                                <option value="light">Light</option>
-                                <option value="dark">Dark</option>
-                                <option value="automatic">Automatic (System Default)</option>
-                            </select>
-                        </div>
-                        
-                        <h4 class="mt-30">Sidebar</h4>
-                        <div class="display-flex align-center gap-10">
-                            <input type="checkbox" id="setting-disclosure" class="checkbox-inline" onchange="saveAllSettings()">
-                            <label for="setting-disclosure">Show disclosure triangles for single account</label>
-                        </div>
-                        <div class="display-flex align-center gap-10 mt-10">
-                            <input type="checkbox" id="setting-starred" class="checkbox-inline" onchange="saveAllSettings()">
-                            <label for="setting-starred">Show Starred mailbox</label>
-                        </div>
-                        <div class="display-flex align-center gap-10 mt-10">
-                            <input type="checkbox" id="setting-collapse-sidebar" class="checkbox-inline" onchange="saveAllSettings()">
-                            <label for="setting-collapse-sidebar">Always Collapse the Sidebar</label>
-                        </div>
+                    <h4 class="mt-25">Maintenance</h4>
+                    <p class="font-13 text-gray mb-10">If your contacts are out of sync or you want to free up space, you can clear the local cache. Contacts will be re-synced from Google on next refresh.</p>
+                    <button class="remove-btn text-gray" onclick="clearLocalContacts()">Clear Local Contact Cache</button>
+                </div>
+
+                <!-- Advanced Tab -->
+                <div id="tab-advanced" class="tab-panel">
+                    <h4>Google API Configuration</h4>
+                    <div class="form-group">
+                        <label>Google Client ID <span id="client-id-env-badge" class="env-badge display-none">Set via .env</span></label>
+                        <input type="text" id="client-id" placeholder="Client ID" onchange="saveAllSettings()">
+                    </div>
+                    <div class="form-group" id="client-secret-group">
+                        <label>Google Client Secret <span id="client-secret-env-badge" class="env-badge display-none">Set via .env</span></label>
+                        <input type="password" id="client-secret" placeholder="Client Secret" onchange="saveAllSettings()">
+                    </div>
+                    <div id="credentials-feedback" class="mb-20 font-13"></div>
+
+                    <div class="p-15 radius-4 mb-20 font-13 bg-light-gray-area">
+                        <p class="mb-5"><b>Status:</b> <span id="stats-status" class="text-green">Connected</span></p>
+                        <p>To enable permanent deletion in Trash/Spam folders, set <code>ENABLE_DELETION_SCOPE=true</code> in your <code>.env</code> file.</p>
                     </div>
 
-                    <!-- Privacy Tab -->
-                    <div id="tab-privacy" class="tab-panel">
-                        <h4>Content Privacy</h4>
-                        <p class="font-13 text-gray mb-20 line-height-1-5">
-                            Remote images can be used by senders to track when and where you open an email (tracking pixels). 
-                            Disabling them can improve your privacy.
-                        </p>
-                        <div class="display-flex align-center gap-10">
-                            <input type="checkbox" id="setting-remote-images" class="checkbox-inline" onchange="saveAllSettings()">
-                            <label for="setting-remote-images">Always display external images</label>
-                        </div>
+                    <h4>System Statistics</h4>
+                    <div id="system-stats" class="font-13 text-gray display-grid grid-2 gap-10 p-15 radius-4 bg-white-area border-gray-area">
+                        <div>Connected Accounts:</div> <div id="stat-accounts" class="text-black">-</div>
+                        <div>Recent Interactions:</div> <div id="stat-recents" class="text-black">-</div>
+                        <div>Google Contacts:</div> <div id="stat-contacts" class="text-black">-</div>
+                        <div>Database Size:</div> <div id="stat-db-size" class="text-black">-</div>
+                        <div>Message Cache Size:</div> <div id="stat-cache-size" class="text-black">-</div>
+                        <div>Full Deletion Scope:</div> <div id="stat-deletion" class="text-black">-</div>
                     </div>
-
-                    <!-- Contacts Tab -->
-                    <div id="tab-contacts" class="tab-panel">
-                        <h4>Recent Activity</h4>
-                        <div class="display-flex align-center gap-10 mb-20">
-                            <input type="checkbox" id="setting-autocomplete-recents" class="checkbox-inline" onchange="saveAllSettings()">
-                            <label for="setting-autocomplete-recents" class="text-gray">Auto-complete from Recents</label>
-                        </div>
-
-                        <h4>Auto-complete from Account Contacts</h4>
-                        <div id="contacts-accounts-list" class="mt-10">
-                            <!-- Account toggles will be rendered here -->
-                        </div>
-
-                        <h4 class="mt-25">Maintenance</h4>
-                        <p class="font-13 text-gray mb-10">If your contacts are out of sync or you want to free up space, you can clear the local cache. Contacts will be re-synced from Google on next refresh.</p>
-                        <button class="remove-btn text-gray" onclick="clearLocalContacts()">Clear Local Contact Cache</button>
-                    </div>
-
-                    <!-- Advanced Tab -->
-                    <div id="tab-advanced" class="tab-panel">
-                        <h4>Google API Configuration</h4>
-                        <div class="form-group">
-                            <label>Google Client ID <span id="client-id-env-badge" class="env-badge display-none">Set via .env</span></label>
-                            <input type="text" id="client-id" placeholder="Client ID" onchange="saveAllSettings()">
-                        </div>
-                        <div class="form-group" id="client-secret-group">
-                            <label>Google Client Secret <span id="client-secret-env-badge" class="env-badge display-none">Set via .env</span></label>
-                            <input type="password" id="client-secret" placeholder="Client Secret" onchange="saveAllSettings()">
-                        </div>
-                        <div id="credentials-feedback" class="mb-20 font-13"></div>
-
-                        <div class="p-15 radius-4 mb-20 font-13 bg-light-gray-area">
-                            <p class="mb-5"><b>Status:</b> <span id="stats-status" class="text-green">Connected</span></p>
-                            <p>To enable permanent deletion in Trash/Spam folders, set <code>ENABLE_DELETION_SCOPE=true</code> in your <code>.env</code> file.</p>
-                        </div>
-
-                        <h4>System Statistics</h4>
-                        <div id="system-stats" class="font-13 text-gray display-grid grid-2 gap-10 p-15 radius-4 bg-white-area border-gray-area">
-                            <div>Connected Accounts:</div> <div id="stat-accounts" class="text-black">-</div>
-                            <div>Recent Interactions:</div> <div id="stat-recents" class="text-black">-</div>
-                            <div>Google Contacts:</div> <div id="stat-contacts" class="text-black">-</div>
-                            <div>Database Size:</div> <div id="stat-db-size" class="text-black">-</div>
-                            <div>Message Cache Size:</div> <div id="stat-cache-size" class="text-black">-</div>
-                            <div>Full Deletion Scope:</div> <div id="stat-deletion" class="text-black">-</div>
-                        </div>
-                        <button class="remove-btn text-gray btn-inline mt-10" onclick="loadStats()">Refresh Statistics</button>
-                    </div>
+                    <button class="remove-btn text-gray btn-inline mt-10" onclick="loadStats()">Refresh Statistics</button>
                 </div>
             </div>
         </div>
@@ -304,14 +250,6 @@
         </div>
     </div>
 
-    <script>
-        console.log("Prosciutto index.html loaded, window.location=" + window.location.href);
-        document.addEventListener('mousedown', (e) => {
-            console.log("GLOBAL MOUSEDOWN: target=", e.target, " id=", e.target.id, " class=", e.target.className);
-            let p = e.target.parentElement;
-            if (p) console.log("  parent: ", p.tagName, " id=", p.id, " class=", p.className);
-        }, true);
-    </script>
-    <script src="js/app.js?v=34"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>
