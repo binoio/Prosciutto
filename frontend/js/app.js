@@ -3,7 +3,7 @@
  * Main Application Logic
  */
 
-console.log("Prosciutto app.js VERSION 33 loading...");
+console.log("Prosciutto app.js VERSION 34 loading...");
 let currentLabel = 'INBOX';
 let currentAccountId = null; // null means unified
 let accounts = [];
@@ -28,16 +28,29 @@ async function init() {
     const compose = urlParams.get('compose');
 
     if (compose === 'true') {
+        console.log("init: Compose-only mode detected");
         // Compose-only view mode
-        document.getElementById('sidebar').style.display = 'none';
-        document.getElementById('header').style.display = 'none';
-        document.getElementById('message-list-container').style.display = 'none';
+        const sidebar = document.getElementById('sidebar');
+        const header = document.getElementById('header');
+        const listContainer = document.getElementById('message-list-container');
+        
+        if (sidebar) sidebar.style.display = 'none';
+        if (header) header.style.display = 'none';
+        if (listContainer) listContainer.style.display = 'none';
+        
         const panel = document.getElementById('message-detail-panel');
-        panel.classList.add('open', 'single-view');
+        if (panel) {
+            panel.classList.add('open', 'single-view');
+            console.log("init: Panel opened in single-view");
+        }
 
+        console.log("init: Loading settings...");
         await loadSettings();
+        console.log("init: Loading accounts...");
         await loadAccounts();
+        console.log(`init: Rendering composer for accountId=${accountId}`);
         renderNewComposerInPanel(accountId);
+        console.log("init: Compose-only initialization complete");
         return;
     }
 
@@ -281,7 +294,10 @@ async function loadAccounts() {
     // Populate account subsets in sidebar
     ['INBOX', 'SENT', 'STARRED', 'DRAFT', 'TRASH', 'SPAM', 'ALL'].forEach(label => {
         const subset = document.getElementById(`accounts-${label}`);
-        if (!subset) return;
+        if (!subset) {
+            console.log(`loadAccounts: Subset accounts-${label} not found, skipping (likely compose-only mode)`);
+            return;
+        }
         subset.innerHTML = '';
         activeAccounts.forEach(acc => {
             const item = document.createElement('div');
