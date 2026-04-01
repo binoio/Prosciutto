@@ -1384,7 +1384,10 @@ function loadImages() {
 window.toggleComposeField = function(field) {
     const group = document.getElementById('group-' + field);
     const toggle = document.getElementById('toggle-' + field);
-    if (group) group.style.display = '';
+    if (group) {
+        group.classList.remove('display-none');
+        group.style.display = 'flex';
+    }
     if (toggle) toggle.style.display = 'none';
 }
 
