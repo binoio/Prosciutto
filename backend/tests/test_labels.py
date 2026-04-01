@@ -2,7 +2,8 @@ import pytest
 import os
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
-from backend.main import app, get_session
+from backend.main import app
+from backend.db import get_session
 from backend.models import Account, Setting
 from sqlmodel import Session, SQLModel, create_engine
 from sqlmodel.pool import StaticPool
@@ -28,8 +29,8 @@ def client_fixture(session: Session):
     yield client
     app.dependency_overrides.clear()
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_list_labels(mock_creds_class, mock_build, client: TestClient, session: Session):
     account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
     session.add(account)
@@ -54,8 +55,8 @@ def test_list_labels(mock_creds_class, mock_build, client: TestClient, session: 
     assert len(data) == 1
     assert data[0]["name"] == "My Label"
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_empty_label(mock_creds_class, mock_build, client: TestClient, session: Session):
     account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
     session.add(account)
@@ -79,8 +80,8 @@ def test_empty_label(mock_creds_class, mock_build, client: TestClient, session: 
     
     assert mock_service.users().messages().batchDelete.called
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_empty_unified_label(mock_creds_class, mock_build, client: TestClient, session: Session):
     acc1 = Account(email="a1@example.com", credentials_json='{"token": "f1"}', is_active=True)
     acc2 = Account(email="a2@example.com", credentials_json='{"token": "f2"}', is_active=True)
@@ -100,8 +101,8 @@ def test_empty_unified_label(mock_creds_class, mock_build, client: TestClient, s
     assert response.status_code == 200
     assert len(response.json()["results"]) == 2
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_create_label(mock_creds_class, mock_build, client: TestClient, session: Session):
     account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
     session.add(account)
@@ -130,8 +131,8 @@ def test_create_label(mock_creds_class, mock_build, client: TestClient, session:
     _, kwargs = mock_service.users().labels().create.call_args
     assert kwargs["body"]["name"] == "New Label"
 
-@patch("backend.main.build")
-@patch("backend.main.Credentials")
+@patch("backend.services.gmail_service.build")
+@patch("backend.services.gmail_service.Credentials")
 def test_apply_label_to_message(mock_creds_class, mock_build, client: TestClient, session: Session):
     account = Account(email="test@example.com", credentials_json='{"token": "fake"}')
     session.add(account)

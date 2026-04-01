@@ -1,7 +1,8 @@
 import pytest
 import os
 from fastapi.testclient import TestClient
-from backend.main import app, get_session
+from backend.main import app
+from backend.db import get_session
 from backend.models import Account, Setting
 from sqlmodel import Session, SQLModel, create_engine
 from unittest.mock import patch
