@@ -1197,18 +1197,22 @@ async function renderDraftInComposer(id, accId) {
         
         const htmlDiv = document.getElementById('panel-compose-body-html');
         const textArea = document.getElementById('panel-compose-body');
-        const toolbar = document.getElementById('panel-compose-toolbar');
+        const markupBtns = document.getElementById('panel-compose-markup-btns');
 
         if (useHtml) {
             htmlDiv.innerHTML = msg.html_body;
-            htmlDiv.style.display = 'block';
-            textArea.style.display = 'none';
-            if (toolbar) toolbar.classList.remove('display-none');
+            htmlDiv.classList.remove('display-none');
+            htmlDiv.classList.add('display-block');
+            textArea.classList.remove('display-block');
+            textArea.classList.add('display-none');
+            if (markupBtns) markupBtns.classList.remove('display-none');
         } else {
             textArea.value = msg.body;
-            textArea.style.display = 'block';
-            htmlDiv.style.display = 'none';
-            if (toolbar) toolbar.classList.add('display-none');
+            textArea.classList.remove('display-none');
+            textArea.classList.add('display-block');
+            htmlDiv.classList.remove('display-block');
+            htmlDiv.classList.add('display-none');
+            if (markupBtns) markupBtns.classList.add('display-none');
         }
         
     } catch (err) {
@@ -1407,23 +1411,33 @@ window.createLink = function() {
 function toggleComposeFormat(checkbox) {
     const htmlDiv = document.getElementById('panel-compose-body-html');
     const textArea = document.getElementById('panel-compose-body');
-    const toolbar = document.getElementById('panel-compose-toolbar');
+    const markupBtns = document.getElementById('panel-compose-markup-btns');
     
     if (checkbox.checked) {
         // Switch to HTML
         htmlDiv.innerHTML = textArea.value.replace(/\n/g, '<br>');
-        htmlDiv.style.display = 'block';
-        textArea.style.display = 'none';
-        if (toolbar) toolbar.classList.remove('display-none');
+        
+        htmlDiv.classList.remove('display-none');
+        htmlDiv.classList.add('display-block');
+        
+        textArea.classList.remove('display-block');
+        textArea.classList.add('display-none');
+        
+        if (markupBtns) markupBtns.classList.remove('display-none');
     } else {
         // Switch to Text
         let text = htmlDiv.innerHTML.replace(/<br\s*[\/]?>/gi, '\n').replace(/<\/p>/gi, '\n\n').replace(/<\/div>/gi, '\n');
         let tempDiv = document.createElement('div');
         tempDiv.innerHTML = text;
         textArea.value = tempDiv.innerText || tempDiv.textContent;
-        textArea.style.display = 'block';
-        htmlDiv.style.display = 'none';
-        if (toolbar) toolbar.classList.add('display-none');
+        
+        textArea.classList.remove('display-none');
+        textArea.classList.add('display-block');
+        
+        htmlDiv.classList.remove('display-block');
+        htmlDiv.classList.add('display-none');
+        
+        if (markupBtns) markupBtns.classList.add('display-none');
     }
 }
 
@@ -1512,28 +1526,28 @@ function renderComposerInPanel(id, accId, action) {
                     <label>Subject</label>
                     <input type="text" id="panel-compose-subject" value="${subject.replace(/"/g, '&quot;')}">
                 </div>
-                <div class="display-flex justify-between align-center mt-10">
+                <div id="panel-compose-toolbar" class="composer-toolbar justify-between">
+                    <div id="panel-compose-markup-btns" class="display-flex gap-5 ${useHtml ? '' : 'display-none'}">
+                        <button type="button" class="toolbar-btn" onclick="execCommand('bold')" title="Bold"><i class="fa-solid fa-bold"></i></button>
+                        <button type="button" class="toolbar-btn" onclick="execCommand('italic')" title="Italic"><i class="fa-solid fa-italic"></i></button>
+                        <button type="button" class="toolbar-btn" onclick="execCommand('underline')" title="Underline"><i class="fa-solid fa-underline"></i></button>
+                        <div class="toolbar-divider"></div>
+                        <button type="button" class="toolbar-btn" onclick="execCommand('insertUnorderedList')" title="Bullet List"><i class="fa-solid fa-list-ul"></i></button>
+                        <button type="button" class="toolbar-btn" onclick="execCommand('insertOrderedList')" title="Numbered List"><i class="fa-solid fa-list-ol"></i></button>
+                        <div class="toolbar-divider"></div>
+                        <button type="button" class="toolbar-btn" onclick="execCommand('outdent')" title="Outdent"><i class="fa-solid fa-outdent"></i></button>
+                        <button type="button" class="toolbar-btn" onclick="execCommand('indent')" title="Indent"><i class="fa-solid fa-indent"></i></button>
+                        <div class="toolbar-divider"></div>
+                        <button type="button" class="toolbar-btn" onclick="createLink()" title="Insert Link"><i class="fa-solid fa-link"></i></button>
+                        <button type="button" class="toolbar-btn" onclick="execCommand('unlink')" title="Remove Link"><i class="fa-solid fa-link-slash"></i></button>
+                    </div>
                     <div class="display-flex align-center">
                         <label class="switch">
                             <input type="checkbox" id="panel-compose-is-html" onchange="toggleComposeFormat(this)" ${useHtml ? 'checked' : ''}>
                             <span class="slider"></span>
                         </label>
-                        <span class="font-13 text-gray">HTML Mode</span>
+                        <span class="font-13 text-gray ml-5">HTML Mode</span>
                     </div>
-                </div>
-                <div id="panel-compose-toolbar" class="composer-toolbar ${useHtml ? '' : 'display-none'}">
-                    <button type="button" class="toolbar-btn" onclick="execCommand('bold')" title="Bold"><i class="fa-solid fa-bold"></i></button>
-                    <button type="button" class="toolbar-btn" onclick="execCommand('italic')" title="Italic"><i class="fa-solid fa-italic"></i></button>
-                    <button type="button" class="toolbar-btn" onclick="execCommand('underline')" title="Underline"><i class="fa-solid fa-underline"></i></button>
-                    <div class="toolbar-divider"></div>
-                    <button type="button" class="toolbar-btn" onclick="execCommand('insertUnorderedList')" title="Bullet List"><i class="fa-solid fa-list-ul"></i></button>
-                    <button type="button" class="toolbar-btn" onclick="execCommand('insertOrderedList')" title="Numbered List"><i class="fa-solid fa-list-ol"></i></button>
-                    <div class="toolbar-divider"></div>
-                    <button type="button" class="toolbar-btn" onclick="execCommand('outdent')" title="Outdent"><i class="fa-solid fa-outdent"></i></button>
-                    <button type="button" class="toolbar-btn" onclick="execCommand('indent')" title="Indent"><i class="fa-solid fa-indent"></i></button>
-                    <div class="toolbar-divider"></div>
-                    <button type="button" class="toolbar-btn" onclick="createLink()" title="Insert Link"><i class="fa-solid fa-link"></i></button>
-                    <button type="button" class="toolbar-btn" onclick="execCommand('unlink')" title="Remove Link"><i class="fa-solid fa-link-slash"></i></button>
                 </div>
                 <div class="form-group flex-1 display-flex flex-column border-none mt-5">
                     <div id="panel-compose-body-html" contenteditable="true" class="${useHtml ? 'display-block' : 'display-none'} composer-body-editable">${bodyHtml}</div>
@@ -1543,10 +1557,9 @@ function renderComposerInPanel(id, accId, action) {
                 <input type="hidden" id="panel-compose-in-reply-to" value="${inReplyTo}">
                 <input type="hidden" id="panel-compose-references" value="${references}">
                 <input type="hidden" id="panel-compose-draft-id" value="">
-                <div class="display-flex gap-10 mt-20 pb-20">
-                    <button class="compose-btn btn-fixed-120" onclick="sendEmailFromPanel(event, ${accId})">Send</button>
+                <div class="display-flex justify-between mt-20 pb-20">
                     <button class="compose-btn btn-fixed-120 bg-light-gray" onclick="saveDraftFromPanel(event, ${accId})">Save</button>
-                    <button class="compose-btn btn-fixed-120 bg-light-gray" onclick="showMessage('${id}', ${accId}, ${isSingleView})">Discard</button>
+                    <button class="compose-btn btn-fixed-120" onclick="sendEmailFromPanel(event, ${accId})">Send</button>
                 </div>
             </div>
         </div>
@@ -1954,28 +1967,28 @@ function renderNewComposerInPanel(accId) {
                     <label>Subject</label>
                     <input type="text" id="panel-compose-subject" value="">
                 </div>
-                <div class="display-flex justify-between align-center mt-10">
+                <div id="panel-compose-toolbar" class="composer-toolbar justify-between">
+                    <div id="panel-compose-markup-btns" class="display-flex gap-5 ${useHtml ? '' : 'display-none'}">
+                        <button type="button" class="toolbar-btn" onclick="execCommand('bold')" title="Bold"><i class="fa-solid fa-bold"></i></button>
+                        <button type="button" class="toolbar-btn" onclick="execCommand('italic')" title="Italic"><i class="fa-solid fa-italic"></i></button>
+                        <button type="button" class="toolbar-btn" onclick="execCommand('underline')" title="Underline"><i class="fa-solid fa-underline"></i></button>
+                        <div class="toolbar-divider"></div>
+                        <button type="button" class="toolbar-btn" onclick="execCommand('insertUnorderedList')" title="Bullet List"><i class="fa-solid fa-list-ul"></i></button>
+                        <button type="button" class="toolbar-btn" onclick="execCommand('insertOrderedList')" title="Numbered List"><i class="fa-solid fa-list-ol"></i></button>
+                        <div class="toolbar-divider"></div>
+                        <button type="button" class="toolbar-btn" onclick="execCommand('outdent')" title="Outdent"><i class="fa-solid fa-outdent"></i></button>
+                        <button type="button" class="toolbar-btn" onclick="execCommand('indent')" title="Indent"><i class="fa-solid fa-indent"></i></button>
+                        <div class="toolbar-divider"></div>
+                        <button type="button" class="toolbar-btn" onclick="createLink()" title="Insert Link"><i class="fa-solid fa-link"></i></button>
+                        <button type="button" class="toolbar-btn" onclick="execCommand('unlink')" title="Remove Link"><i class="fa-solid fa-link-slash"></i></button>
+                    </div>
                     <div class="display-flex align-center">
                         <label class="switch">
                             <input type="checkbox" id="panel-compose-is-html" onchange="toggleComposeFormat(this)" ${useHtml ? 'checked' : ''}>
                             <span class="slider"></span>
                         </label>
-                        <span class="font-13 text-gray">HTML Mode</span>
+                        <span class="font-13 text-gray ml-5">HTML Mode</span>
                     </div>
-                </div>
-                <div id="panel-compose-toolbar" class="composer-toolbar ${useHtml ? '' : 'display-none'}">
-                    <button type="button" class="toolbar-btn" onclick="execCommand('bold')" title="Bold"><i class="fa-solid fa-bold"></i></button>
-                    <button type="button" class="toolbar-btn" onclick="execCommand('italic')" title="Italic"><i class="fa-solid fa-italic"></i></button>
-                    <button type="button" class="toolbar-btn" onclick="execCommand('underline')" title="Underline"><i class="fa-solid fa-underline"></i></button>
-                    <div class="toolbar-divider"></div>
-                    <button type="button" class="toolbar-btn" onclick="execCommand('insertUnorderedList')" title="Bullet List"><i class="fa-solid fa-list-ul"></i></button>
-                    <button type="button" class="toolbar-btn" onclick="execCommand('insertOrderedList')" title="Numbered List"><i class="fa-solid fa-list-ol"></i></button>
-                    <div class="toolbar-divider"></div>
-                    <button type="button" class="toolbar-btn" onclick="execCommand('outdent')" title="Outdent"><i class="fa-solid fa-outdent"></i></button>
-                    <button type="button" class="toolbar-btn" onclick="execCommand('indent')" title="Indent"><i class="fa-solid fa-indent"></i></button>
-                    <div class="toolbar-divider"></div>
-                    <button type="button" class="toolbar-btn" onclick="createLink()" title="Insert Link"><i class="fa-solid fa-link"></i></button>
-                    <button type="button" class="toolbar-btn" onclick="execCommand('unlink')" title="Remove Link"><i class="fa-solid fa-link-slash"></i></button>
                 </div>
                 <div class="form-group flex-1 display-flex flex-column border-none mt-5">
                     <div id="panel-compose-body-html" contenteditable="true" class="${useHtml ? 'display-block' : 'display-none'} composer-body-editable"></div>
@@ -1985,10 +1998,9 @@ function renderNewComposerInPanel(accId) {
                 <input type="hidden" id="panel-compose-in-reply-to" value="">
                 <input type="hidden" id="panel-compose-references" value="">
                 <input type="hidden" id="panel-compose-draft-id" value="">
-                <div class="display-flex gap-10 mt-20 pb-20">
-                    <button class="compose-btn btn-fixed-120" onclick="sendEmailFromPanel(event, ${accId})">Send</button>
+                <div class="display-flex justify-between mt-20 pb-20">
                     <button class="compose-btn btn-fixed-120 bg-light-gray" onclick="saveDraftFromPanel(event, ${accId})">Save</button>
-                    <button class="compose-btn btn-fixed-120 bg-light-gray" onclick="${discardAction}">Discard</button>
+                    <button class="compose-btn btn-fixed-120" onclick="sendEmailFromPanel(event, ${accId})">Send</button>
                 </div>
             </div>
         </div>

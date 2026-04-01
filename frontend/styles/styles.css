@@ -888,7 +888,7 @@ input:checked + .slider:before {
 
 .composer-body-editable {
     flex: 1;
-    min-height: 300px;
+    min-height: 500px;
     border: 1px solid var(--border-gray);
     padding: 10px;
     border-bottom-left-radius: 4px;
@@ -901,7 +901,7 @@ input:checked + .slider:before {
 
 .composer-body-textarea {
     flex: 1;
-    min-height: 300px;
+    min-height: 500px;
     border: 1px solid var(--border-gray);
     padding: 10px;
     border-radius: 4px;
