@@ -1415,7 +1415,7 @@ function renderComposerInPanel(id, accId, action) {
                 <div class="form-group position-relative">
                     <label>To</label>
                     <div class="display-flex align-center flex-1">
-                        <input type="text" id="panel-compose-to" placeholder="To" value="${to.replace(/"/g, '&quot;')}" class="flex-1">
+                        <input type="text" id="panel-compose-to" value="${to.replace(/"/g, '&quot;')}" class="flex-1">
                         <div class="font-12 text-gray cursor-pointer user-select-none ml-10 text-nowrap">
                             <span id="toggle-cc" onclick="toggleComposeField('cc')" class="ml-10">Cc</span>
                             <span id="toggle-bcc" onclick="toggleComposeField('bcc')" class="ml-10">Bcc</span>
@@ -1432,7 +1432,7 @@ function renderComposerInPanel(id, accId, action) {
                 </div>
                 <div class="form-group">
                     <label>Subject</label>
-                    <input type="text" id="panel-compose-subject" placeholder="Subject" value="${subject.replace(/"/g, '&quot;')}">
+                    <input type="text" id="panel-compose-subject" value="${subject.replace(/"/g, '&quot;')}">
                 </div>
                 <div class="display-flex justify-between align-center mt-10">
                     <label class="font-12 cursor-pointer text-gray">
@@ -1770,7 +1770,7 @@ function renderNewComposerInPanel(accId) {
                 <div class="form-group position-relative">
                     <label>To</label>
                     <div class="display-flex align-center flex-1">
-                        <input type="text" id="panel-compose-to" placeholder="To" value="" class="flex-1">
+                        <input type="text" id="panel-compose-to" value="" class="flex-1">
                         <div class="font-12 text-gray cursor-pointer user-select-none ml-10 text-nowrap">
                             <span id="toggle-cc" onclick="toggleComposeField('cc')" class="ml-10">Cc</span>
                             <span id="toggle-bcc" onclick="toggleComposeField('bcc')" class="ml-10">Bcc</span>
@@ -1787,7 +1787,7 @@ function renderNewComposerInPanel(accId) {
                 </div>
                 <div class="form-group">
                     <label>Subject</label>
-                    <input type="text" id="panel-compose-subject" placeholder="Subject" value="">
+                    <input type="text" id="panel-compose-subject" value="">
                 </div>
                 <div class="display-flex justify-between align-center mt-10">
                     <label class="font-12 cursor-pointer text-gray">
