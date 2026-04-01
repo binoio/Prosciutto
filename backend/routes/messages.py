@@ -37,6 +37,7 @@ class SendEmailRequest(BaseModel):
     threadId: Optional[str] = None
     inReplyTo: Optional[str] = None
     references: Optional[str] = None
+    draftId: Optional[str] = None
 
 class SaveDraftRequest(BaseModel):
     to: Optional[str] = ""
@@ -361,6 +362,13 @@ async def send_email(account_id: int, request: SendEmailRequest, session: Sessio
             body=body
         ).execute()
         
+        # Delete draft if it exists
+        if request.draftId:
+            try:
+                service.users().drafts().delete(userId="me", id=request.draftId).execute()
+            except Exception as e:
+                logger.warning(f"Failed to delete draft after sending: {e}")
+
         for addr in [request.to, request.cc, request.bcc]:
             if addr:
                 for contact in extract_contacts(addr):

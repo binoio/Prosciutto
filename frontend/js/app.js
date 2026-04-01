@@ -1165,9 +1165,67 @@ window.addEventListener('message', function(e) {
 });
 
 /**
+ * Render an existing draft in the composer
+ */
+async function renderDraftInComposer(id, accId) {
+    const panel = document.getElementById('message-detail-panel');
+    panel.classList.add('open');
+    panel.innerHTML = '<div class="loading-indicator">Loading draft...</div>';
+
+    try {
+        const res = await fetch(`/accounts/${accId}/messages/${id}`);
+        const msg = await res.json();
+        
+        renderNewComposerInPanel(accId);
+        
+        // Fill the fields
+        document.getElementById('panel-compose-to').value = msg.to || '';
+        document.getElementById('panel-compose-subject').value = msg.subject || '';
+        document.getElementById('panel-compose-cc').value = msg.cc || '';
+        document.getElementById('panel-compose-bcc').value = msg.bcc || '';
+        document.getElementById('panel-compose-draft-id').value = id;
+        document.getElementById('panel-compose-thread-id').value = msg.threadId || '';
+        document.getElementById('panel-compose-in-reply-to').value = msg.inReplyTo || '';
+        document.getElementById('panel-compose-references').value = msg.references || '';
+        
+        if (msg.cc) toggleComposeField('cc');
+        if (msg.bcc) toggleComposeField('bcc');
+
+        const useHtml = msg.html_body ? true : false;
+        const checkbox = document.getElementById('panel-compose-is-html');
+        checkbox.checked = useHtml;
+        
+        const htmlDiv = document.getElementById('panel-compose-body-html');
+        const textArea = document.getElementById('panel-compose-body');
+        const toolbar = document.getElementById('panel-compose-toolbar');
+
+        if (useHtml) {
+            htmlDiv.innerHTML = msg.html_body;
+            htmlDiv.style.display = 'block';
+            textArea.style.display = 'none';
+            if (toolbar) toolbar.classList.remove('display-none');
+        } else {
+            textArea.value = msg.body;
+            textArea.style.display = 'block';
+            htmlDiv.style.display = 'none';
+            if (toolbar) toolbar.classList.add('display-none');
+        }
+        
+    } catch (err) {
+        console.error(err);
+        panel.innerHTML = '<div class="error-indicator">Failed to load draft.</div>';
+    }
+}
+
+/**
  * Show message details in the side panel
  */
 async function showMessage(id, accId, isSingleView = false) {
+    if (currentLabel === 'DRAFT') {
+        renderDraftInComposer(id, accId);
+        return;
+    }
+    
     if (!accId) {
         const activeAcc = accounts.find(a => a.is_active) || accounts[0];
         accId = activeAcc ? activeAcc.id : null;
@@ -1481,8 +1539,10 @@ function renderComposerInPanel(id, accId, action) {
                 <input type="hidden" id="panel-compose-thread-id" value="${threadId}">
                 <input type="hidden" id="panel-compose-in-reply-to" value="${inReplyTo}">
                 <input type="hidden" id="panel-compose-references" value="${references}">
+                <input type="hidden" id="panel-compose-draft-id" value="">
                 <div class="display-flex gap-10 mt-20 pb-20">
                     <button class="compose-btn btn-fixed-120" onclick="sendEmailFromPanel(event, ${accId})">Send</button>
+                    <button class="compose-btn btn-fixed-120 bg-light-gray" onclick="saveDraftFromPanel(event, ${accId})">Save</button>
                     <button class="compose-btn btn-fixed-120 bg-light-gray" onclick="showMessage('${id}', ${accId}, ${isSingleView})">Discard</button>
                 </div>
             </div>
@@ -1516,6 +1576,7 @@ async function sendEmailFromPanel(event, accId) {
     const body = isHtml ? document.getElementById('panel-compose-body-html').innerHTML : document.getElementById('panel-compose-body').value;
     const cc = document.getElementById('panel-compose-cc').value;
     const bcc = document.getElementById('panel-compose-bcc').value;
+    const draftId = document.getElementById('panel-compose-draft-id').value;
 
     const data = {
         to: document.getElementById('panel-compose-to').value,
@@ -1526,7 +1587,8 @@ async function sendEmailFromPanel(event, accId) {
         isHtml: isHtml,
         threadId: document.getElementById('panel-compose-thread-id').value || null,
         inReplyTo: document.getElementById('panel-compose-in-reply-to').value || null,
-        references: document.getElementById('panel-compose-references').value || null
+        references: document.getElementById('panel-compose-references').value || null,
+        draftId: draftId || null
     };
     
     const btn = event.target;
@@ -1564,6 +1626,71 @@ async function sendEmailFromPanel(event, accId) {
     } catch (err) {
         console.error(err);
         alert("An error occurred while sending the email");
+        btn.innerText = originalText;
+        btn.disabled = false;
+    }
+}
+
+/**
+ * Save draft from the side panel composer
+ */
+async function saveDraftFromPanel(event, accId) {
+    const fromAccId = document.getElementById('panel-compose-from').value;
+    const isHtml = document.getElementById('panel-compose-is-html').checked;
+    const body = isHtml ? document.getElementById('panel-compose-body-html').innerHTML : document.getElementById('panel-compose-body').value;
+    const cc = document.getElementById('panel-compose-cc').value;
+    const bcc = document.getElementById('panel-compose-bcc').value;
+    const draftIdInput = document.getElementById('panel-compose-draft-id');
+
+    const data = {
+        to: document.getElementById('panel-compose-to').value,
+        subject: document.getElementById('panel-compose-subject').value,
+        body: body,
+        cc: cc || null,
+        bcc: bcc || null,
+        isHtml: isHtml,
+        threadId: document.getElementById('panel-compose-thread-id').value || null,
+        inReplyTo: document.getElementById('panel-compose-in-reply-to').value || null,
+        references: document.getElementById('panel-compose-references').value || null,
+        draftId: draftIdInput.value || null
+    };
+    
+    const btn = event.target;
+    const originalText = btn.innerText;
+    btn.innerText = 'Saving...';
+    btn.disabled = true;
+
+    try {
+        const res = await fetch(`/accounts/${fromAccId}/drafts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        
+        if (res.ok) {
+            // Update draft ID for future saves
+            if (result.draft && result.draft.id) {
+                draftIdInput.value = result.draft.id;
+            }
+            btn.innerText = 'Saved';
+            setTimeout(() => {
+                btn.innerText = 'Save';
+                btn.disabled = false;
+            }, 2000);
+            
+            // Refresh mailbox if in DRAFT view
+            if (currentLabel === 'DRAFT') {
+                refreshMailbox();
+            }
+        } else {
+            alert("Error saving draft: " + (result.detail || "Unknown error"));
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
+    } catch (err) {
+        console.error(err);
+        alert("An error occurred while saving the draft");
         btn.innerText = originalText;
         btn.disabled = false;
     }
@@ -1854,8 +1981,10 @@ function renderNewComposerInPanel(accId) {
                 <input type="hidden" id="panel-compose-thread-id" value="">
                 <input type="hidden" id="panel-compose-in-reply-to" value="">
                 <input type="hidden" id="panel-compose-references" value="">
+                <input type="hidden" id="panel-compose-draft-id" value="">
                 <div class="display-flex gap-10 mt-20 pb-20">
                     <button class="compose-btn btn-fixed-120" onclick="sendEmailFromPanel(event, ${accId})">Send</button>
+                    <button class="compose-btn btn-fixed-120 bg-light-gray" onclick="saveDraftFromPanel(event, ${accId})">Save</button>
                     <button class="compose-btn btn-fixed-120 bg-light-gray" onclick="${discardAction}">Discard</button>
                 </div>
             </div>
