@@ -66,47 +66,48 @@
         <div id="header">
             <h2 id="view-name">Inbox</h2>
             <div id="search-container">
-                <div class="search-bar-wrapper">
+                <div class="search-inner">
                     <i class="fa-solid fa-magnifying-glass search-icon"></i>
                     <input type="text" id="search-input" placeholder="Search mail" onkeyup="handleSearch(event)">
-                    <div class="search-actions">
-                        <div id="advanced-search-toggle" onclick="toggleAdvancedSearch(event)">
-                            <i class="fa-solid fa-sliders"></i>
-                        </div>
-                        <div id="advanced-search-dropdown" class="advanced-search-dropdown" onclick="event.stopPropagation()">
-                            <div class="advanced-search-form">
-                                <div class="form-row">
-                                    <label>From</label>
-                                    <input type="text" id="adv-from">
-                                </div>
-                                <div class="form-row">
-                                    <label>To</label>
-                                    <input type="text" id="adv-to">
-                                </div>
-                                <div class="form-row">
-                                    <label>Subject</label>
-                                    <input type="text" id="adv-subject">
-                                </div>
-                                <div class="form-row">
-                                    <label>Has words</label>
-                                    <input type="text" id="adv-body">
-                                </div>
-                                <div class="form-row">
-                                    <label>Date After</label>
-                                    <input type="date" id="adv-date-after">
-                                </div>
-                                <div class="form-row">
-                                    <label>Date Before</label>
-                                    <input type="date" id="adv-date-before">
-                                </div>
-                                <div class="form-row">
-                                    <label>Has attachment</label>
-                                    <input type="checkbox" id="adv-has-attachment">
-                                </div>
-                                <div class="form-actions">
-                                    <button class="action-btn btn-inline" onclick="clearAdvancedSearch()">Clear</button>
-                                    <button class="compose-btn btn-inline" onclick="performAdvancedSearch()">Search</button>
-                                </div>
+                    <div id="search-execute-btn" onclick="performSearch()" title="Execute Search">
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </div>
+                    <div id="advanced-search-toggle" onclick="toggleAdvancedSearch(event)">
+                        <i class="fa-solid fa-sliders"></i>
+                    </div>
+                    <div id="advanced-search-dropdown" class="advanced-search-dropdown" onclick="event.stopPropagation()">
+                        <div class="advanced-search-form">
+                            <div class="form-row">
+                                <label>From</label>
+                                <input type="text" id="adv-from">
+                            </div>
+                            <div class="form-row">
+                                <label>To</label>
+                                <input type="text" id="adv-to">
+                            </div>
+                            <div class="form-row">
+                                <label>Subject</label>
+                                <input type="text" id="adv-subject">
+                            </div>
+                            <div class="form-row">
+                                <label>Has words</label>
+                                <input type="text" id="adv-body">
+                            </div>
+                            <div class="form-row">
+                                <label>Date After</label>
+                                <input type="date" id="adv-date-after">
+                            </div>
+                            <div class="form-row">
+                                <label>Date Before</label>
+                                <input type="date" id="adv-date-before">
+                            </div>
+                            <div class="form-row">
+                                <label>Has attachment</label>
+                                <input type="checkbox" id="adv-has-attachment">
+                            </div>
+                            <div class="form-actions">
+                                <button class="action-btn btn-inline" onclick="clearAdvancedSearch()">Clear</button>
+                                <button class="compose-btn btn-inline" onclick="performAdvancedSearch()">Search</button>
                             </div>
                         </div>
                     </div>
@@ -118,6 +119,9 @@
         <div id="content">
             <div id="message-list-container">
                 <div id="message-list-header">
+                    <div id="refresh-btn" onclick="window.refreshMailbox()" title="Refresh Mailbox">
+                        <i class="fa-solid fa-rotate"></i>
+                    </div>
                     <input type="checkbox" id="multi-select-checkbox" onclick="toggleAllMessages(this)">
 
                     <div class="column-header col-sender flex-shrink-0" onclick="sortMessages('from')">
@@ -133,8 +137,7 @@
                         Date <span id="sort-internalDate" class="sort-icon"></span>
                     </div>
 
-                    <div id="selection-info" class="selection-info-bar">
-                        <span id="selection-count">0</span> messages selected
+                    <div id="selection-info" class="selection-info-bar">                        <span id="selection-count">0</span> messages selected
                         <select id="action-dropdown" onchange="performBatchAction(this.value)">
                             <option value="">Actions...</option>
                             <option value="mark-read">Mark as Read</option>
@@ -167,7 +170,6 @@
         <div class="modal-container">
             <div class="modal-header">
                 <h3>Settings</h3>
-                <span class="close-modal" onclick="closeSettings()">&times;</span>
             </div>
             <div class="modal-body">
                 <div class="modal-tabs">
@@ -180,15 +182,24 @@
                 <div class="modal-content">
                     <!-- Accounts Tab -->
                     <div id="tab-accounts" class="tab-panel active">
+                        <h4>Configured Accounts</h4>
                         <div id="accounts-list-settings">
                             <!-- Accounts will be rendered here -->
                         </div>
-                        <button class="compose-btn btn-inline" onclick="addAccount()">Add Account</button>
+                        <div class="mt-20">
+                            <button class="compose-btn btn-inline" onclick="addAccount()">Add Account</button>
+                        </div>
                     </div>
 
                     <!-- General Tab -->
                     <div id="tab-general" class="tab-panel">
                         <h4>Composition Behavior</h4>
+                        <div class="form-group">
+                            <label>Default account for new messages</label>
+                            <select id="setting-default-account" onchange="saveAllSettings()">
+                                <option value="">First added account</option>
+                            </select>
+                        </div>
                         <div class="form-group">
                             <input type="checkbox" id="setting-compose-window" class="checkbox-inline" onchange="saveAllSettings()">
                             <label for="setting-compose-window">Compose new messages in their own window</label>
@@ -228,6 +239,10 @@
                             <input type="checkbox" id="setting-collapse-sidebar" class="checkbox-inline" onchange="saveAllSettings()">
                             <label for="setting-collapse-sidebar">Always keep sidebar collapsed</label>
                         </div>
+                        <div class="form-group">
+                            <input type="checkbox" id="setting-side-panel" class="checkbox-inline" onchange="saveAllSettings()">
+                            <label for="setting-side-panel">Always open messages in side panel</label>
+                        </div>
 
                         <h4>Sidebar Components</h4>
                         <div class="form-group">
@@ -254,11 +269,20 @@
 
                         <h4 class="mt-25">Maintenance</h4>
                         <p class="font-13 text-gray mb-10">If your contacts are out of sync or you want to free up space, you can clear the local cache. Contacts will be re-synced from Google on next refresh.</p>
-                        <button class="remove-btn text-gray" onclick="clearLocalContacts()">Clear Local Contact Cache</button>
+                        <button class="compose-btn btn-inline bg-light-gray" onclick="clearLocalContacts()">Clear Local Contact Cache</button>
                     </div>
 
                     <!-- Advanced Tab -->
                     <div id="tab-advanced" class="tab-panel">
+                        <h4>Account Connectivity</h4>
+                        <div class="form-group">
+                            <input type="checkbox" id="setting-enable-deletion" class="checkbox-inline" onchange="saveAllSettings()">
+                            <label for="setting-enable-deletion">Allow Permanent Deletion via Empty Trash and Spam</label>
+                        </div>
+                        <p class="font-12 text-gray mb-20 p-10 bg-light-gray radius-4" style="border-left: 3px solid var(--accent-red);">
+                            <b>Warning:</b> Enabling this requires higher permissions. You <b>must remove and re-add all accounts</b> for this change to take effect. Permanent deletion cannot be undone.
+                        </p>
+
                         <h4>Google API Configuration</h4>
                         <div class="form-group">
                             <label>Google Client ID <span id="client-id-env-badge" class="env-badge display-none">Set via .env</span></label>
@@ -270,11 +294,6 @@
                         </div>
                         <div id="credentials-feedback" class="mb-20 font-13"></div>
 
-                        <div class="p-15 radius-4 mb-20 font-13 bg-light-gray">
-                            <p class="mb-5"><b>Status:</b> <span id="stats-status" class="text-green">Connected</span></p>
-                            <p>To enable permanent deletion in Trash/Spam folders, set <code>ENABLE_DELETION_SCOPE=true</code> in your <code>.env</code> file.</p>
-                        </div>
-
                         <h4>System Statistics</h4>
                         <div id="system-stats" class="font-13 text-gray display-grid grid-2 gap-10 p-15 radius-4 bg-white border-gray">
                             <div>Connected Accounts:</div> <div id="stat-accounts" class="text-black">-</div>
@@ -284,7 +303,7 @@
                             <div>Message Cache Size:</div> <div id="stat-cache-size" class="text-black">-</div>
                             <div>Full Deletion Scope:</div> <div id="stat-deletion" class="text-black">-</div>
                         </div>
-                        <button class="remove-btn text-gray btn-inline mt-10" onclick="loadStats()">Refresh Statistics</button>
+                        <button class="compose-btn btn-inline bg-light-gray mt-10" onclick="window.loadStats()">Refresh Statistics</button>
                     </div>
                 </div>
             </div>

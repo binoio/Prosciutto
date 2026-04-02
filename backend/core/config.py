@@ -27,9 +27,18 @@ def get_requested_scopes():
         "https://www.googleapis.com/auth/contacts.other.readonly",
         "https://www.googleapis.com/auth/userinfo.profile"
     ]
-    # Default-deny the app's use of or requests for the messages.delete or messages.batchDelete scope
-    # unless .env exists and contains a ENABLE_DELETION_SCOPE=true.
-    if os.getenv("ENABLE_DELETION_SCOPE") == "true":
+    
+    enable_deletion = os.getenv("ENABLE_DELETION_SCOPE")
+    if enable_deletion is None:
+        try:
+            with Session(engine) as session:
+                setting = session.exec(select(Setting).where(Setting.key == "ENABLE_DELETION_SCOPE")).first()
+                if setting:
+                    enable_deletion = setting.value
+        except Exception:
+            pass
+
+    if enable_deletion == "true":
         scopes.append("https://mail.google.com/")
     else:
         scopes.append("https://www.googleapis.com/auth/gmail.modify")

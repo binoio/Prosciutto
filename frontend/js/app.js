@@ -92,7 +92,7 @@ async function init() {
 
         await loadSettings();
         await loadAccounts();
-        showMessage(messageId, accountId, true);
+        window.showMessage(messageId, accountId, true);
         return;
     }
 
@@ -149,7 +149,14 @@ function setupEventDelegation() {
         // Default: show message
         const msgId = row.dataset.id;
         const accId = row.dataset.accid;
-        showMessage(msgId, accId);
+        
+        if (globalSettings.ALWAYS_OPEN_IN_SIDE_PANEL !== 'false') {
+            window.showMessage(msgId, accId);
+        } else {
+            // Just highlight the row if side panel is disabled
+            document.querySelectorAll('.message-item').forEach(item => item.classList.remove('selected'));
+            row.classList.add('selected');
+        }
     });
 
     list.addEventListener('dblclick', (e) => {
@@ -159,7 +166,11 @@ function setupEventDelegation() {
         if (row) {
             const msgId = row.dataset.id;
             const accId = row.dataset.accid;
-            openMessageInNewWindow(msgId, accId);
+            if (globalSettings.ALWAYS_OPEN_IN_SIDE_PANEL !== 'false') {
+                window.showMessage(msgId, accId);
+            } else {
+                openMessageInNewWindow(msgId, accId);
+            }
         }
     });
 }
@@ -246,6 +257,9 @@ async function loadSettings() {
     const collapseSidebarEl = document.getElementById('setting-collapse-sidebar');
     if (collapseSidebarEl) collapseSidebarEl.checked = globalSettings.ALWAYS_COLLAPSE_SIDEBAR === 'true';
 
+    const sidePanelEl = document.getElementById('setting-side-panel');
+    if (sidePanelEl) sidePanelEl.checked = globalSettings.ALWAYS_OPEN_IN_SIDE_PANEL !== 'false';
+
     // Populate Contacts Settings
     const autocompleteRecentsEl = document.getElementById('setting-autocomplete-recents');
     if (autocompleteRecentsEl) autocompleteRecentsEl.checked = globalSettings.AUTOCOMPLETE_RECENTS === 'true';
@@ -253,6 +267,19 @@ async function loadSettings() {
     // Populate Privacy Settings
     const remoteImagesEl = document.getElementById('setting-remote-images');
     if (remoteImagesEl) remoteImagesEl.checked = globalSettings.LOAD_REMOTE_IMAGES === 'true';
+
+    // Populate Account Connectivity (Advanced)
+    const enableDeletionEl = document.getElementById('setting-enable-deletion');
+    if (enableDeletionEl) {
+        enableDeletionEl.checked = globalSettings.ENABLE_DELETION_SCOPE === 'true';
+        if (globalSettings.is_enable_deletion_env) {
+            enableDeletionEl.disabled = true;
+            enableDeletionEl.title = "Overridden by environment variable ENABLE_DELETION_SCOPE";
+        }
+    }
+
+    // Refresh the accounts-based UI elements (like the default account dropdown)
+    window.renderAccountsInSettings();
 
     applyTheme(globalSettings.THEME);
     updateStarredMailboxVisibility();
@@ -276,11 +303,27 @@ async function saveAllSettings() {
     const disclosure = document.getElementById('setting-disclosure').checked;
     const starred = document.getElementById('setting-starred').checked;
     const collapseSidebar = document.getElementById('setting-collapse-sidebar').checked;
+    const sidePanel = document.getElementById('setting-side-panel').checked;
     const remoteImages = document.getElementById('setting-remote-images').checked;
     const composeWindow = document.getElementById('setting-compose-window').checked;
     const composeHtml = document.getElementById('setting-compose-html').checked;
     const markReadAuto = document.getElementById('setting-mark-read').checked;
     const warnDelete = document.getElementById('setting-warn-delete').checked;
+    const defaultAccount = document.getElementById('setting-default-account').value;
+    
+    let enableDeletion = false;
+    const enableDeletionEl = document.getElementById('setting-enable-deletion');
+    if (enableDeletionEl) {
+        enableDeletion = enableDeletionEl.checked;
+        // Special handling for deletion scope enabling
+        if (enableDeletion && globalSettings.ENABLE_DELETION_SCOPE !== 'true') {
+            const confirmed = confirm("Enabling permanent deletion requires higher permissions from Google. \n\nIMPORTANT: For this to work, you MUST remove and re-add all accounts after saving. \n\nDo you want to proceed?");
+            if (!confirmed) {
+                enableDeletionEl.checked = false;
+                enableDeletion = false;
+            }
+        }
+    }
 
     const autocompleteRecents = document.getElementById('setting-autocomplete-recents').checked;
     const autocompleteEnabledAccounts = Array.from(document.querySelectorAll('.contact-account-toggle'))
@@ -296,6 +339,9 @@ async function saveAllSettings() {
         SHOW_DISCLOSURE_IF_SINGLE: disclosure ? 'true' : 'false',
         SHOW_STARRED: starred ? 'true' : 'false',
         ALWAYS_COLLAPSE_SIDEBAR: collapseSidebar ? 'true' : 'false',
+        ALWAYS_OPEN_IN_SIDE_PANEL: sidePanel ? 'true' : 'false',
+        DEFAULT_COMPOSE_ACCOUNT: defaultAccount,
+        ENABLE_DELETION_SCOPE: enableDeletion ? 'true' : 'false',
         LOAD_REMOTE_IMAGES: remoteImages ? 'true' : 'false',
         COMPOSE_NEW_WINDOW: composeWindow ? 'true' : 'false',
         COMPOSE_AS_HTML: composeHtml ? 'true' : 'false',
@@ -488,22 +534,38 @@ function updateStarredMailboxVisibility() {
     }
 }
 
-function renderAccountsInSettings() {
+window.renderAccountsInSettings = function() {
     const list = document.getElementById('accounts-list-settings');
-    list.innerHTML = '';
-    accounts.forEach(acc => {
-        const row = document.createElement('div');
-        row.className = 'account-row display-flex align-center';
-        row.innerHTML = `
-            <span class="flex-1 ${!acc.is_active ? 'text-strike text-gray' : ''}">${acc.email}</span>
-            <label class="display-flex align-center gap-5 mr-15 font-13 text-gray cursor-pointer">
+    if (list) {
+        list.innerHTML = '';
+        accounts.forEach(acc => {
+            const row = document.createElement('div');
+            row.className = 'account-row display-flex align-center';
+            const displayName = acc.name ? `${acc.name} (${acc.email})` : acc.email;
+            row.innerHTML = `
                 <input type="checkbox" class="checkbox-inline" ${acc.is_active ? 'checked' : ''} onchange="toggleAccountActive(${acc.id}, this.checked)">
-                Active
-            </label>
-            <button class="remove-btn" onclick="removeAccount(${acc.id}, '${acc.email}')">Remove</button>
-        `;
-        list.appendChild(row);
-    });
+                <span class="flex-1 ${!acc.is_active ? 'text-strike text-gray' : ''}">${displayName}</span>
+                <button class="compose-btn btn-inline bg-light-gray" onclick="removeAccount(${acc.id}, '${acc.email}')">Remove</button>
+            `;
+            list.appendChild(row);
+        });
+    }
+
+    // Populate the default account dropdown in General settings
+    const defaultAccSelect = document.getElementById('setting-default-account');
+    if (defaultAccSelect) {
+        // Keep the "First added account" option
+        defaultAccSelect.innerHTML = '<option value="">First added account</option>';
+        accounts.forEach(acc => {
+            const opt = document.createElement('option');
+            opt.value = acc.id;
+            opt.innerText = acc.email;
+            if (globalSettings.DEFAULT_COMPOSE_ACCOUNT == acc.id) {
+                opt.selected = true;
+            }
+            defaultAccSelect.appendChild(opt);
+        });
+    }
 }
 
 async function toggleAccountActive(id, isActive) {
@@ -578,11 +640,11 @@ async function removeAccount(id, email) {
     }
 }
 
-function openSettings() {
+window.openSettings = function() {
     const url = '?settings=true';
     window.open(url, '_blank', 'width=800,height=680');
 }
-function closeSettings() {
+window.closeSettings = function() {
     saveAllSettings();
     const modal = document.getElementById('settings-modal');
     if (modal.classList.contains('standalone')) {
@@ -592,14 +654,14 @@ function closeSettings() {
     }
 }
 
-async function clearLocalContacts() {
+window.clearLocalContacts = async function() {
     if (!confirm("Are you sure you want to clear all locally cached contacts and recents? This will force a full re-sync from Google.")) return;
     
     try {
         const res = await fetch('/contacts/clear', { method: 'POST' });
         if (res.ok) {
             alert("Local contact cache cleared successfully.");
-            loadStats();
+            window.loadStats();
         } else {
             alert("Failed to clear contact cache.");
         }
@@ -609,7 +671,7 @@ async function clearLocalContacts() {
     }
 }
 
-async function loadStats() {
+window.loadStats = async function() {
     try {
         const res = await fetch('/stats');
         const data = await res.json();
@@ -659,7 +721,7 @@ function formatBytes(bytes, decimals = 2) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
-function switchTab(tab) {
+window.switchTab = function(tab) {
     document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     
@@ -670,7 +732,7 @@ function switchTab(tab) {
     if (panelEl) panelEl.classList.add('active');
 }
 
-function toggleDisclosure(event, label) {
+window.toggleDisclosure = function(event, label) {
     event.stopPropagation();
     const triangle = event.target;
     const subset = document.getElementById(`accounts-${label}`);
@@ -683,7 +745,7 @@ function toggleDisclosure(event, label) {
 /**
  * Load unified mailbox messages
  */
-async function loadMailbox(label, append = false, refresh = false) {
+window.loadMailbox = async function(label, append = false, refresh = false) {
     if (!append) {
         currentLabel = label;
         currentAccountId = null;
@@ -726,7 +788,7 @@ async function loadMailbox(label, append = false, refresh = false) {
 /**
  * Load mailbox messages for a specific account
  */
-async function loadAccountMailbox(accId, email, label, append = false, refresh = false) {
+window.loadAccountMailbox = async function(accId, email, label, append = false, refresh = false) {
     if (!append) {
         currentLabel = label;
         currentAccountId = accId;
@@ -851,13 +913,24 @@ function loadMore() {
     }
 }
 
+window.handleSearch = function(event) {
+    if (event.key === 'Enter') {
+        performSearch();
+    }
+}
+
 /**
  * Perform message search
  */
-async function performSearch(append = false, refresh = false) {
+window.performSearch = async function(append = false, refresh = false) {
     const searchInput = document.getElementById('search-input');
-    const query = searchInput ? searchInput.value : '';
-    if (!query && !append) return;
+    const query = searchInput ? searchInput.value.trim() : '';
+    
+    if (!query && !append) {
+        // Clear search results and return to Inbox (or last active label)
+        window.loadMailbox('INBOX');
+        return;
+    }
 
     if (!append) {
         currentLabel = 'SEARCH';
@@ -902,13 +975,13 @@ async function performSearch(append = false, refresh = false) {
     }
 }
 
-function toggleAdvancedSearch(event) {
+window.toggleAdvancedSearch = function(event) {
     if (event) event.stopPropagation();
     const dropdown = document.getElementById('advanced-search-dropdown');
-    dropdown.classList.toggle('open');
+    if (dropdown) dropdown.classList.toggle('open');
 }
 
-function performAdvancedSearch() {
+window.performAdvancedSearch = function() {
     const from = document.getElementById('adv-from').value;
     const subject = document.getElementById('adv-subject').value;
     const body = document.getElementById('adv-body').value;
@@ -929,10 +1002,10 @@ function performAdvancedSearch() {
         document.getElementById('search-input').value = query;
         performSearch();
     }
-    toggleAdvancedSearch();
+    window.toggleAdvancedSearch();
 }
 
-function clearAdvancedSearch() {
+window.clearAdvancedSearch = function() {
     document.getElementById('adv-from').value = '';
     document.getElementById('adv-subject').value = '';
     document.getElementById('adv-body').value = '';
@@ -980,21 +1053,30 @@ function renderSkeletons() {
  */
 function createMessageRow(msg) {
     const item = document.createElement('div');
-    item.className = 'message-item';
+    const isUnread = msg.labelIds && msg.labelIds.includes('UNREAD');
+    item.className = `message-item ${isUnread ? 'unread' : ''}`;
     item.id = `msg-${msg.id}`;
     // Use data attributes for event delegation
     const accountId = msg.accountId || msg.account_id || currentAccountId;
     item.dataset.id = msg.id;
     item.dataset.accid = accountId;
     
-    const isUnread = msg.labelIds && msg.labelIds.includes('UNREAD');
     item.innerHTML = `
         <div class="unread-dot ${isUnread ? '' : 'invisible'}"></div>
         <input type="checkbox" class="message-checkbox" data-id="${msg.id}" data-accid="${accountId}">
-        <div class="message-sender text-ellipsis bold">${msg.from || msg.accountEmail || ''}</div>
-        <div class="message-snippet"><b>${msg.subject || '(no subject)'}</b> - ${msg.snippet}</div>
+        <div class="message-sender text-ellipsis">${msg.from || msg.accountEmail || ''}</div>
+        <div class="message-snippet"><span class="message-subject">${msg.subject || '(no subject)'}</span> - ${msg.snippet}</div>
         <div class="message-date">
-            <span class="message-date-text">${new Date(msg.internalDate).toLocaleDateString()}</span>
+            <span class="message-date-text">
+                ${(() => {
+                    const date = new Date(msg.internalDate);
+                    const today = new Date();
+                    const isToday = date.getDate() === today.getDate() && 
+                                    date.getMonth() === today.getMonth() && 
+                                    date.getFullYear() === today.getFullYear();
+                    return isToday ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : date.toLocaleDateString();
+                })()}
+            </span>
             <div class="message-item-actions">
                 <button class="hover-action-btn toggle-read" title="${isUnread ? 'Mark as Read' : 'Mark as Unread'}">
                     <i class="fa-solid ${isUnread ? 'fa-envelope-open' : 'fa-envelope'}"></i>
@@ -1404,6 +1486,8 @@ window.showMessage = async function(id, accId, isSingleView = false) {
                             removeLabelIds: ['UNREAD']
                         })
                     });
+                    const msgRow = document.getElementById(`msg-${id}`);
+                    if (msgRow) msgRow.classList.remove('unread');
                     const listDot = document.querySelector(`#msg-${id} .unread-dot`);
                     if (listDot) listDot.classList.add('invisible');
                     const detailDot = document.getElementById('detail-unread-dot');
@@ -1714,7 +1798,7 @@ window.renderComposerInPanel = function(id, accId, action) {
         <div class="composer-in-panel">
             <div class="composer-header-styled display-flex justify-between">
                 <span class="font-18 bold">${action.charAt(0).toUpperCase() + action.slice(1).replace(/([A-Z])/g, ' $1')}</span>
-                <span class="cursor-pointer" onclick="showMessage('${id}', ${accId}, ${isSingleView})">✖</span>
+                <span class="cursor-pointer" onclick="window.showMessage('${id}', ${accId}, ${isSingleView})">✖</span>
             </div>
             <div class="composer-body-styled">
                 <div class="form-group">
@@ -1843,7 +1927,7 @@ async function sendEmailFromPanel(event, accId) {
             if (panel.classList.contains('single-view')) {
                 if (panel.dataset.currentMessage) {
                     const msg = JSON.parse(panel.dataset.currentMessage);
-                    showMessage(msg.id, accId, true);
+                    window.showMessage(msg.id, accId, true);
                 } else {
                     window.close();
                 }
@@ -1958,6 +2042,11 @@ window.toggleReadStatus = async function(id, accId, currentlyUnread) {
     if (res.ok) {
         notifyOpener();
         const isNowUnread = !currentlyUnread;
+        const msgRow = document.getElementById(`msg-${id}`);
+        if (msgRow) {
+            if (isNowUnread) msgRow.classList.add('unread');
+            else msgRow.classList.remove('unread');
+        }
         const listDot = document.querySelector(`#msg-${id} .unread-dot`);
         if (listDot) {
             if (isNowUnread) listDot.classList.remove('invisible');
@@ -2161,7 +2250,9 @@ function hideMessageDetail() {
  */
 function renderNewComposerInPanel(accId) {
     if (!accId) {
-        const activeAcc = accounts.find(a => a.is_active) || accounts[0];
+        const defaultId = globalSettings.DEFAULT_COMPOSE_ACCOUNT;
+        const defaultAcc = accounts.find(a => String(a.id) === String(defaultId) && a.is_active);
+        const activeAcc = defaultAcc || accounts.find(a => a.is_active) || accounts[0];
         if (activeAcc) accId = activeAcc.id;
     }
     
@@ -2179,7 +2270,6 @@ function renderNewComposerInPanel(accId) {
         <div class="composer-in-panel">
             <div class="composer-header-styled display-flex justify-between">
                 <span class="font-18 bold">New Message</span>
-                <span class="cursor-pointer" onclick="${discardAction}">✖</span>
             </div>
             <div class="composer-body-styled">
                 <div class="form-group">
@@ -2264,19 +2354,21 @@ function renderNewComposerInPanel(accId) {
 /**
  * Open composer (either in a new window or side panel)
  */
-function showComposer() {
+window.showComposer = function() {
     const isNewWindow = globalSettings.COMPOSE_NEW_WINDOW !== 'false';
     if (isNewWindow) {
-        const activeAcc = accounts.find(a => a.is_active) || accounts[0];
+        const defaultId = globalSettings.DEFAULT_COMPOSE_ACCOUNT;
+        const defaultAcc = accounts.find(a => String(a.id) === String(defaultId) && a.is_active);
+        const activeAcc = defaultAcc || accounts.find(a => a.is_active) || accounts[0];
         const accId = currentAccountId || (activeAcc ? activeAcc.id : '');
         const url = `?compose=true&accountId=${accId}`;
-        window.open(url, '_blank', 'width=800,height=680');
+        window.open(url, '_blank', 'width=800,height=900');
     } else {
         renderNewComposerInPanel(currentAccountId);
     }
 }
 
-function addAccount() {
+window.addAccount = function() {
     location.href = '/auth/login';
 }
 

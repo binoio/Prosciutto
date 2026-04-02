@@ -11,7 +11,7 @@ from googleapiclient.discovery import build
 
 from backend.db import get_session
 from backend.models import Account, Setting
-from backend.core.config import get_client_config, SCOPES
+from backend.core.config import get_client_config, get_requested_scopes
 from backend.core.security import generate_pkce_verifier, generate_pkce_challenge
 from backend.services.gmail_service import sync_recent_contacts_warmup
 from backend.services.people_service import sync_google_contacts
@@ -30,7 +30,7 @@ async def login(request: Request, session: Session = Depends(get_session)):
         "client_id": client_config["web"]["client_id"],
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": " ".join(SCOPES),
+        "scope": " ".join(get_requested_scopes()),
         "access_type": "offline",
         "prompt": "consent",
         "include_granted_scopes": "true",
@@ -91,7 +91,7 @@ async def auth_callback(request: Request, code: str, state: str, background_task
         token_uri=token_url,
         client_id=client_config["web"]["client_id"],
         client_secret=client_config["web"].get("client_secret") if app_type == "web" else None,
-        scopes=SCOPES
+        scopes=get_requested_scopes()
     )
     
     service = build("oauth2", "v2", credentials=credentials)
