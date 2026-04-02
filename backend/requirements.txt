@@ -11,3 +11,4 @@ pytest
 pytest-asyncio
 diskcache
 python-dotenv
+pytest-playwright
