@@ -79,6 +79,7 @@ def test_compose_cc_bcc_toggle(page: Page):
     
     # Click Cc
     page.click("#toggle-cc", force=True)
+    time.sleep(1)
     
     # Check CC group is visible and toggle is hidden
     expect(page.locator("#group-cc")).to_be_visible()
@@ -86,6 +87,7 @@ def test_compose_cc_bcc_toggle(page: Page):
     
     # Click Bcc
     page.click("#toggle-bcc", force=True)
+    time.sleep(1)
     
     # Check BCC group is visible and toggle is hidden
     expect(page.locator("#group-bcc")).to_be_visible()
