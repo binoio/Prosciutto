@@ -1,12 +1,32 @@
 import pytest
+import os
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch
 from backend.main import app
+from backend.db import get_session
 from backend.models import Account, Setting
+from sqlmodel import Session, SQLModel, create_engine
 
-@pytest.fixture
-def client():
-    return TestClient(app)
+@pytest.fixture(name="session")
+def session_fixture():
+    db_file = "test_drafts.db"
+    if os.path.exists(db_file):
+        os.remove(db_file)
+    engine = create_engine(f"sqlite:///{db_file}")
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        yield session
+    if os.path.exists(db_file):
+        os.remove(db_file)
+
+@pytest.fixture(name="client")
+def client_fixture(session: Session):
+    def get_session_override():
+        return session
+    app.dependency_overrides[get_session] = get_session_override
+    client = TestClient(app)
+    yield client
+    app.dependency_overrides.clear()
 
 @patch("backend.routes.messages.get_gmail_service")
 def test_save_draft(mock_get_service, client):
