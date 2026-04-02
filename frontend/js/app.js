@@ -1810,8 +1810,8 @@ window.renderComposerInPanel = function(id, accId, action) {
                     <div class="display-flex align-center flex-1">
                         <input type="text" id="panel-compose-to" value="${to.replace(/"/g, '&quot;')}" class="flex-1">
                         <div class="font-12 text-gray cursor-pointer user-select-none ml-10 text-nowrap">
-                            <span id="toggle-cc" onclick="toggleComposeField('cc')" class="ml-10">Cc</span>
-                            <span id="toggle-bcc" onclick="toggleComposeField('bcc')" class="ml-10">Bcc</span>
+                            <span id="toggle-cc" onclick="window.toggleComposeField('cc')" class="ml-10">Cc</span>
+                            <span id="toggle-bcc" onclick="window.toggleComposeField('bcc')" class="ml-10">Bcc</span>
                         </div>
                     </div>
                 </div>
@@ -2281,8 +2281,8 @@ function renderNewComposerInPanel(accId) {
                     <div class="display-flex align-center flex-1">
                         <input type="text" id="panel-compose-to" value="" class="flex-1">
                         <div class="font-12 text-gray cursor-pointer user-select-none ml-10 text-nowrap">
-                            <span id="toggle-cc" onclick="toggleComposeField('cc')" class="ml-10">Cc</span>
-                            <span id="toggle-bcc" onclick="toggleComposeField('bcc')" class="ml-10">Bcc</span>
+                            <span id="toggle-cc" onclick="window.toggleComposeField('cc')" class="ml-10">Cc</span>
+                            <span id="toggle-bcc" onclick="window.toggleComposeField('bcc')" class="ml-10">Bcc</span>
                         </div>
                     </div>
                 </div>
