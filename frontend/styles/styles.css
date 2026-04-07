@@ -602,6 +602,11 @@ body.resizing, body.resizing * { cursor: col-resize !important; }
 
 .mailbox-item i { margin-right: 8px; }
 
+.mailbox-item:focus, .message-item:focus, .account-subset-item:focus, .action-btn:focus, .compose-btn:focus, .hover-action-btn:focus {
+    outline: 2px solid var(--accent-red);
+    outline-offset: -2px;
+}
+
 .sidebar-labels-header {
     margin-top: 20px;
     padding: 0 15px;
