@@ -15,6 +15,23 @@ A web app for viewing unified mailboxes across Gmail accounts.
 - **Mock Tests**: Comprehensive test suite with Google API mocks.
 - **GitHub Actions**: Continuous integration with automated tests on every push.
 
+## Keyboard Navigation
+
+Prosciutto is designed to be fully navigable via keyboard:
+
+- **Navigation**:
+  - `j` / `k` or `ArrowUp` / `ArrowDown`: Move focus between messages, mailboxes, and buttons.
+  - `Enter` / `Space`: Activate the currently focused element (open a message, click a button, etc.).
+  - `Right Arrow`: Expand a focused unified mailbox in the sidebar.
+  - `Left Arrow`: Collapse a focused unified mailbox in the sidebar.
+- **Shortcuts**:
+  - `c`: **Compose** a new message.
+  - `r`: **Refresh** the current mailbox.
+  - `b`: **Toggle sidebar** (expand/collapse).
+  - `,` (comma): Open **Settings**.
+  - `1` - `5`: Quick-jump to common mailboxes (Inbox, Sent, Drafts, Trash, All Mail).
+  - `x`: **Select/Deselect** the currently focused message.
+
 ## Technical Architecture
 
 - **Backend**: Python 3.11 with [FastAPI](https://fastapi.tiangolo.com/).
