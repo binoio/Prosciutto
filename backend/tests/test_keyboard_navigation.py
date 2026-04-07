@@ -27,6 +27,7 @@ def server():
         session.add(Setting(key="GOOGLE_CLIENT_ID", value="test_id"))
         session.add(Setting(key="GOOGLE_CLIENT_SECRET", value="test_secret"))
         session.add(Setting(key="COMPOSE_NEW_WINDOW", value="false"))
+        session.add(Setting(key="KEYBOARD_SHORTCUTS_ENABLED", value="true"))
         fake_creds = '{"token": "fake", "refresh_token": "fake", "client_id": "test_id", "client_secret": "test_secret"}'
         session.add(Account(id=1, email="test@example.com", credentials_json=fake_creds, is_active=True))
         session.commit()

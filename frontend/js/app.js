@@ -270,6 +270,9 @@ async function loadSettings() {
     const remoteImagesEl = document.getElementById('setting-remote-images');
     if (remoteImagesEl) remoteImagesEl.checked = globalSettings.LOAD_REMOTE_IMAGES === 'true';
 
+    const keyboardShortcutsEl = document.getElementById('setting-keyboard-shortcuts');
+    if (keyboardShortcutsEl) keyboardShortcutsEl.checked = globalSettings.KEYBOARD_SHORTCUTS_ENABLED === 'true';
+
     // Populate Account Connectivity (Advanced)
     const enableDeletionEl = document.getElementById('setting-enable-deletion');
     if (enableDeletionEl) {
@@ -311,6 +314,7 @@ async function saveAllSettings() {
     const composeHtml = document.getElementById('setting-compose-html').checked;
     const markReadAuto = document.getElementById('setting-mark-read').checked;
     const warnDelete = document.getElementById('setting-warn-delete').checked;
+    const keyboardShortcuts = document.getElementById('setting-keyboard-shortcuts').checked;
     const defaultAccount = document.getElementById('setting-default-account').value;
     
     let enableDeletion = false;
@@ -350,6 +354,7 @@ async function saveAllSettings() {
         MARK_READ_AUTOMATICALLY: markReadAuto ? 'true' : 'false',
         WARN_BEFORE_DELETE: warnDelete ? 'true' : 'false',
         AUTOCOMPLETE_RECENTS: autocompleteRecents ? 'true' : 'false',
+        KEYBOARD_SHORTCUTS_ENABLED: keyboardShortcuts ? 'true' : 'false',
         AUTOCOMPLETE_ENABLED_ACCOUNTS: autocompleteEnabledAccounts
     };
     // Only include credentials if they are not disabled (not from env)
@@ -2565,6 +2570,9 @@ function closeAutocomplete() {
  */
 function setupKeyboardShortcuts() {
     document.addEventListener('keydown', (e) => {
+        // Only proceed if keyboard shortcuts are enabled in settings
+        if (globalSettings.KEYBOARD_SHORTCUTS_ENABLED !== 'true') return;
+
         // Protection against keyboard shortcuts invocation when text entry elements are in focus
         const isTextEntry = (e.target.tagName === 'INPUT' && !['checkbox', 'radio', 'range', 'color'].includes(e.target.type)) ||
                             e.target.tagName === 'TEXTAREA' ||

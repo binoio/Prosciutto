@@ -41,6 +41,7 @@ async def get_settings(session: Session = Depends(get_session)):
         "WARN_BEFORE_DELETE": settings_dict.get("WARN_BEFORE_DELETE", "true"),
         "MARK_READ_AUTOMATICALLY": settings_dict.get("MARK_READ_AUTOMATICALLY", "true"),
         "AUTOCOMPLETE_RECENTS": settings_dict.get("AUTOCOMPLETE_RECENTS", "true"),
+        "KEYBOARD_SHORTCUTS_ENABLED": settings_dict.get("KEYBOARD_SHORTCUTS_ENABLED", "false"),
         "AUTOCOMPLETE_ENABLED_ACCOUNTS": settings_dict.get("AUTOCOMPLETE_ENABLED_ACCOUNTS", ""),
         "CAN_PERMANENTLY_DELETE": "https://mail.google.com/" in get_requested_scopes()
     }
