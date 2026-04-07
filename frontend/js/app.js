@@ -2566,11 +2566,11 @@ function closeAutocomplete() {
 function setupKeyboardShortcuts() {
     document.addEventListener('keydown', (e) => {
         // Protection against keyboard shortcuts invocation when text entry elements are in focus
-        const isTextEntry = (e.target.tagName === 'INPUT' && !['checkbox', 'radio', 'range', 'color'].includes(e.target.type)) || 
-                            e.target.tagName === 'TEXTAREA' || 
-                            e.target.isContentEditable;
+        const isTextEntry = (e.target.tagName === 'INPUT' && !['checkbox', 'radio', 'range', 'color'].includes(e.target.type)) ||
+                            e.target.tagName === 'TEXTAREA' ||
+                            e.target.isContentEditable === true ||
+                            e.target.contentEditable === 'true';
         if (isTextEntry) return;
-
         // Keyboard navigation
         if (e.key === 'ArrowDown' || e.key === 'j') {
             navigateFocus(1);
@@ -2582,10 +2582,24 @@ function setupKeyboardShortcuts() {
             if (document.activeElement && document.activeElement.classList.contains('modal-tab')) {
                 navigateFocus(1);
                 e.preventDefault();
+            } else if (document.activeElement && document.activeElement.classList.contains('mailbox-item')) {
+                // Right arrow expands unified mailbox
+                const triangle = document.activeElement.querySelector('.disclosure-triangle');
+                if (triangle && !triangle.classList.contains('expanded')) {
+                    triangle.click();
+                }
+                e.preventDefault();
             }
         } else if (e.key === 'ArrowLeft' || e.key === 'h') {
             if (document.activeElement && document.activeElement.classList.contains('modal-tab')) {
                 navigateFocus(-1);
+                e.preventDefault();
+            } else if (document.activeElement && document.activeElement.classList.contains('mailbox-item')) {
+                // Left arrow collapses unified mailbox
+                const triangle = document.activeElement.querySelector('.disclosure-triangle');
+                if (triangle && triangle.classList.contains('expanded')) {
+                    triangle.click();
+                }
                 e.preventDefault();
             }
         } else if (e.key === 'Enter' || e.key === ' ') {
@@ -2614,7 +2628,12 @@ function setupKeyboardShortcuts() {
                         updateSelectionCount();
                     }
                 } else {
-                    active.click();
+                    if (typeof active.click === 'function') {
+                        active.click();
+                    } else {
+                        const evt = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+                        active.dispatchEvent(evt);
+                    }
                 }
                 e.preventDefault();
             }
@@ -2633,7 +2652,9 @@ function setupKeyboardShortcuts() {
             window.loadMailbox('');
         } else if (e.key === 'b') {
             toggleSidebarCollapse();
-        } else if (e.key === 'u') {
+        } else if (e.key === 'c') {
+            window.showComposer();
+        } else if (e.key === 'r') {
             window.refreshMailbox();
         } else if (e.key === ',') {
             window.openSettings();
