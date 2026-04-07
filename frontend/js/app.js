@@ -110,6 +110,53 @@ async function init() {
     } else {
         loadMailbox('INBOX');
     }
+    startNewMailPolling();
+}
+
+/**
+ * Poll for new mail every minute and show notifications
+ */
+async function startNewMailPolling() {
+    // Only poll in the main window
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('settings') === 'true' || urlParams.get('compose') === 'true' || urlParams.get('messageId')) {
+        return;
+    }
+
+    const POLLING_INTERVAL = 60000; // 1 minute
+
+    setInterval(async () => {
+        try {
+            const res = await fetch('/accounts/check-new-messages');
+            if (res.ok) {
+                const newMessages = await res.json();
+                if (newMessages && newMessages.length > 0) {
+                    newMessages.forEach(msg => {
+                        const title = `New Mail: ${msg.subject || '(No Subject)'}`;
+                        const options = {
+                            body: `From: ${msg.from}\nAccount: ${msg.account_email}`,
+                            icon: '/favicon.ico'
+                        };
+                        
+                        if (Notification.permission === "granted") {
+                            const n = new Notification(title, options);
+                            n.onclick = () => {
+                                window.focus();
+                                window.showMessage(msg.id, msg.account_id); // Assuming we have account_id, need to add it to backend response
+                            };
+                        }
+                    });
+                    
+                    // Also refresh the current mailbox if we're in INBOX or UNIFIED
+                    if (currentLabel === 'INBOX' || currentLabel === 'UNIFIED') {
+                        refreshMailbox();
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Error polling for new mail:", err);
+        }
+    }, POLLING_INTERVAL);
 }
 
 /**
@@ -550,12 +597,20 @@ window.renderAccountsInSettings = function() {
         list.innerHTML = '';
         accounts.forEach(acc => {
             const row = document.createElement('div');
-            row.className = 'account-row display-flex align-center';
+            row.className = 'account-row display-flex align-center flex-wrap';
             const displayName = acc.name ? `${acc.name} (${acc.email})` : acc.email;
             row.innerHTML = `
-                <input type="checkbox" class="checkbox-inline" ${acc.is_active ? 'checked' : ''} onchange="toggleAccountActive(${acc.id}, this.checked)">
-                <span class="flex-1 ${!acc.is_active ? 'text-strike text-gray' : ''}">${displayName}</span>
-                <button class="compose-btn btn-inline bg-light-gray" onclick="removeAccount(${acc.id}, '${acc.email}')">Remove</button>
+                <div class="display-flex align-center flex-1">
+                    <input type="checkbox" class="checkbox-inline" ${acc.is_active ? 'checked' : ''} onchange="toggleAccountActive(${acc.id}, this.checked)" title="Enable Account">
+                    <span class="font-14 ${!acc.is_active ? 'text-strike text-gray' : ''}">${displayName}</span>
+                </div>
+                <div class="display-flex align-center">
+                    <label class="font-12 text-gray mr-10 display-flex align-center">
+                        <input type="checkbox" class="checkbox-inline mr-5" ${acc.notifications_enabled ? 'checked' : ''} onchange="toggleAccountNotifications(${acc.id}, this.checked)">
+                        Notifications
+                    </label>
+                    <button class="compose-btn btn-inline bg-light-gray" onclick="removeAccount(${acc.id}, '${acc.email}')">Remove</button>
+                </div>
             `;
             list.appendChild(row);
         });
@@ -607,6 +662,27 @@ async function toggleAccountActive(id, isActive) {
     } catch (err) {
         console.error(err);
         alert("An error occurred while updating account status");
+        renderAccountsInSettings();
+    }
+}
+
+async function toggleAccountNotifications(id, isEnabled) {
+    try {
+        const res = await fetch(`/accounts/${id}/toggle-notifications`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_active: isEnabled })
+        });
+        if (res.ok) {
+            await loadAccounts();
+            renderAccountsInSettings();
+            if (isEnabled && Notification.permission !== "granted") {
+                Notification.requestPermission();
+            }
+        }
+    } catch (err) {
+        console.error(err);
+        alert("An error occurred while updating notification settings");
         renderAccountsInSettings();
     }
 }

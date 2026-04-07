@@ -11,6 +11,8 @@ class Account(SQLModel, table=True):
     # Google API OAuth2 credentials (access_token, refresh_token, etc.)
     credentials_json: str
     is_active: bool = Field(default=True)
+    notifications_enabled: bool = Field(default=False)
+    last_history_id: Optional[str] = None
     sync_token: Optional[str] = None
     other_sync_token: Optional[str] = None
     last_contact_sync: Optional[datetime] = None
