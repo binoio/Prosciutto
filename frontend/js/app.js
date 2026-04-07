@@ -20,6 +20,8 @@ let columnWidths = {
  * Initialize the application
  */
 async function init() {
+    
+    registerServiceWorker();
     document.documentElement.style.setProperty('--sender-width', `${columnWidths.sender}px`);
     const urlParams = new URLSearchParams(window.location.search);
     let messageId = urlParams.get('messageId');
@@ -111,6 +113,101 @@ async function init() {
         loadMailbox('INBOX');
     }
     startNewMailPolling();
+    
+}
+
+
+/**
+ * Register Service Worker for Web Push
+ */
+async function registerServiceWorker() {
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+        try {
+            const registration = await navigator.serviceWorker.register('/js/sw.js');
+            
+        } catch (err) {
+            console.error('Service Worker registration failed:', err);
+        }
+    }
+}
+
+/**
+ * Convert Base64 URL-safe to Uint8Array for VAPID key
+ */
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+        .replace(/\-/g, '+')
+        .replace(/_/g, '/');
+
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+/**
+ * Subscribe to Push Notifications
+ */
+async function subscribeToPushNotifications() {
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        const configRes = await fetch('/accounts/push-config');
+        const config = await configRes.json();
+        
+        const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(config.public_key)
+        });
+
+        const subObj = JSON.parse(JSON.stringify(subscription));
+        await fetch('/accounts/subscribe-push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                endpoint: subObj.endpoint,
+                p256dh: subObj.keys.p256dh,
+                auth: subObj.keys.auth
+            })
+        });
+        
+        
+        return true;
+    } catch (err) {
+        console.error('Failed to subscribe to Web Push:', err);
+        return false;
+    }
+}
+
+/**
+ * Unsubscribe from Push Notifications
+ */
+async function unsubscribeFromPushNotifications() {
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription();
+        if (subscription) {
+            const subObj = JSON.parse(JSON.stringify(subscription));
+            await fetch('/accounts/unsubscribe-push', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    endpoint: subObj.endpoint,
+                    p256dh: subObj.keys.p256dh,
+                    auth: subObj.keys.auth
+                })
+            });
+            await subscription.unsubscribe();
+            
+        }
+        return true;
+    } catch (err) {
+        console.error('Failed to unsubscribe from Web Push:', err);
+        return false;
+    }
 }
 
 /**
@@ -163,6 +260,7 @@ async function startNewMailPolling() {
  * Setup event delegation for the message list to avoid multiple listeners
  */
 function setupEventDelegation() {
+    
     const list = document.getElementById('message-list');
     if (!list) return;
 
@@ -676,8 +774,25 @@ async function toggleAccountNotifications(id, isEnabled) {
         if (res.ok) {
             await loadAccounts();
             renderAccountsInSettings();
-            if (isEnabled && Notification.permission !== "granted") {
-                Notification.requestPermission();
+            
+            if (isEnabled) {
+                if (Notification.permission === "default") {
+                    const permission = await Notification.requestPermission();
+                    if (permission === "granted") {
+                        await subscribeToPushNotifications();
+                    }
+                } else if (Notification.permission === "granted") {
+                    await subscribeToPushNotifications();
+                } else {
+                    alert("Please enable notifications in your browser settings to receive new mail alerts.");
+                }
+            } else {
+                // If NO other account has notifications enabled, we could unsubscribe.
+                // But keeping the subscription is fine, the server will only send if an account is enabled.
+                const anyEnabled = accounts.some(a => a.id !== id && a.notifications_enabled);
+                if (!anyEnabled) {
+                    await unsubscribeFromPushNotifications();
+                }
             }
         }
     } catch (err) {
@@ -1699,9 +1814,11 @@ window.loadImages = function() {
 }
 
 window.toggleComposeField = function(field) {
+    
     const group = document.getElementById('group-' + field);
     const toggle = document.getElementById('toggle-' + field);
     if (group) {
+        
         group.classList.remove('display-none');
         group.style.display = 'flex';
     }

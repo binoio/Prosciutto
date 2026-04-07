@@ -49,8 +49,8 @@ def test_toggle_notifications(client: TestClient, session: Session):
     assert response.json()["notifications_enabled"] == False
     assert session.get(Account, account.id).notifications_enabled == False
 
-@patch("backend.routes.accounts.get_gmail_service")
-@patch("backend.routes.accounts.get_detailed_messages_batch")
+@patch("backend.services.gmail_service.get_gmail_service")
+@patch("backend.services.gmail_service.get_detailed_messages_batch")
 def test_check_new_messages_logic(mock_get_detailed, mock_get_service, client: TestClient, session: Session):
     # Setup: Add an account with notifications enabled
     account = Account(
@@ -107,7 +107,7 @@ def test_check_new_messages_logic(mock_get_detailed, mock_get_service, client: T
     session.refresh(account)
     assert account.last_history_id == "1100"
 
-@patch("backend.routes.accounts.get_gmail_service")
+@patch("backend.services.gmail_service.get_gmail_service")
 def test_check_new_messages_no_change(mock_get_service, client: TestClient, session: Session):
     # Setup: Account with history_id "1000"
     account = Account(

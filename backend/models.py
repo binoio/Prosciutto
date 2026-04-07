@@ -40,3 +40,12 @@ class Setting(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     key: str = Field(unique=True)
     value: str
+
+class PushSubscription(SQLModel, table=True):
+    __table_args__ = {"extend_existing": True}
+    id: Optional[int] = Field(default=None, primary_key=True)
+    endpoint: str = Field(unique=True)
+    p256dh: str
+    auth: str
+    user_agent: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)

@@ -1,78 +1,63 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import Session, select
 from pydantic import BaseModel
 
 from backend.db import get_session
-from backend.models import Account
-from backend.services.gmail_service import get_gmail_service, get_detailed_messages_batch
+from backend.models import Account, PushSubscription
+from backend.services.gmail_service import (
+    get_gmail_service, 
+    get_detailed_messages_batch, 
+    check_new_messages_internal
+)
+from backend.core.config import VAPID_PUBLIC_KEY
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 class AccountToggleRequest(BaseModel):
     is_active: bool
 
+class PushSubscriptionRequest(BaseModel):
+    endpoint: str
+    p256dh: str
+    auth: str
+
+@router.get("/push-config")
+async def get_push_config():
+    return {"public_key": VAPID_PUBLIC_KEY}
+
+@router.post("/subscribe-push")
+async def subscribe_push(request_data: PushSubscriptionRequest, request: Request, session: Session = Depends(get_session)):
+    # Check if subscription already exists
+    existing = session.exec(select(PushSubscription).where(PushSubscription.endpoint == request_data.endpoint)).first()
+    if existing:
+        existing.p256dh = request_data.p256dh
+        existing.auth = request_data.auth
+        existing.user_agent = request.headers.get("user-agent")
+        session.add(existing)
+    else:
+        new_sub = PushSubscription(
+            endpoint=request_data.endpoint,
+            p256dh=request_data.p256dh,
+            auth=request_data.auth,
+            user_agent=request.headers.get("user-agent")
+        )
+        session.add(new_sub)
+    
+    session.commit()
+    return {"status": "success"}
+
+@router.post("/unsubscribe-push")
+async def unsubscribe_push(request_data: PushSubscriptionRequest, session: Session = Depends(get_session)):
+    existing = session.exec(select(PushSubscription).where(PushSubscription.endpoint == request_data.endpoint)).first()
+    if existing:
+        session.delete(existing)
+        session.commit()
+    return {"status": "success"}
+
 @router.get("/check-new-messages")
 async def check_new_messages(session: Session = Depends(get_session)):
-    accounts = session.exec(select(Account).where(Account.is_active == True).where(Account.notifications_enabled == True)).all()
-    new_messages_all = []
-
-    for account in accounts:
-        service = get_gmail_service(account.id, session)
-        if not service:
-            continue
-        
-        try:
-            # Get the current profile to get the latest historyId
-            profile = service.users().getProfile(userId='me').execute()
-            current_history_id = profile.get('historyId')
-            
-            if not account.last_history_id:
-                account.last_history_id = current_history_id
-                session.add(account)
-                session.commit()
-                continue
-            
-            if current_history_id == account.last_history_id:
-                continue
-                
-            # Fetch history since last_history_id
-            history = service.users().history().list(userId='me', startHistoryId=account.last_history_id, historyTypes=['messageAdded']).execute()
-            history_records = history.get('history', [])
-            
-            new_msg_metas = []
-            for h in history_records:
-                messages_added = h.get('messagesAdded', [])
-                for ma in messages_added:
-                    msg = ma.get('message')
-                    if msg and 'INBOX' in msg.get('labelIds', []):
-                        new_msg_metas.append(msg)
-            
-            if new_msg_metas:
-                # Limit to 5 most recent
-                new_msg_metas = new_msg_metas[-5:]
-                detailed = get_detailed_messages_batch(service, new_msg_metas, format="metadata", metadata_headers=["Subject", "From"])
-                for m in detailed:
-                    m['account_email'] = account.email
-                    m['account_id'] = account.id
-                    new_messages_all.append(m)
-            
-            account.last_history_id = current_history_id
-            session.add(account)
-            session.commit()
-            
-        except Exception as e:
-            print(f"Error checking new messages for {account.email}: {e}")
-            # Fallback: if historyId is too old, just update it and move on
-            try:
-                profile = service.users().getProfile(userId='me').execute()
-                account.last_history_id = profile.get('historyId')
-                session.add(account)
-                session.commit()
-            except:
-                pass
-
-    return new_messages_all
+    return await check_new_messages_internal(session)
 
 @router.get("")
 async def list_accounts(session: Session = Depends(get_session)):

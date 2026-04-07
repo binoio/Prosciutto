@@ -152,6 +152,67 @@ async def update_recent_contact(account_id: int, email: str, name: Optional[str]
             session.delete(extra)
         session.commit()
 
+async def check_new_messages_internal(session: Session):
+    accounts = session.exec(select(Account).where(Account.is_active == True).where(Account.notifications_enabled == True)).all()
+    new_messages_all = []
+
+    for account in accounts:
+        service = get_gmail_service(account.id, session)
+        if not service:
+            continue
+        
+        try:
+            # Get the current profile to get the latest historyId
+            profile = service.users().getProfile(userId='me').execute()
+            current_history_id = profile.get('historyId')
+            
+            if not account.last_history_id:
+                account.last_history_id = current_history_id
+                session.add(account)
+                session.commit()
+                continue
+            
+            if current_history_id == account.last_history_id:
+                continue
+                
+            # Fetch history since last_history_id
+            history = service.users().history().list(userId='me', startHistoryId=account.last_history_id, historyTypes=['messageAdded']).execute()
+            history_records = history.get('history', [])
+            
+            new_msg_metas = []
+            for h in history_records:
+                messages_added = h.get('messagesAdded', [])
+                for ma in messages_added:
+                    msg = ma.get('message')
+                    if msg and 'INBOX' in msg.get('labelIds', []):
+                        new_msg_metas.append(msg)
+            
+            if new_msg_metas:
+                # Limit to 5 most recent
+                new_msg_metas = new_msg_metas[-5:]
+                detailed = get_detailed_messages_batch(service, new_msg_metas, format="metadata", metadata_headers=["Subject", "From"])
+                for m in detailed:
+                    m['account_email'] = account.email
+                    m['account_id'] = account.id
+                    new_messages_all.append(m)
+            
+            account.last_history_id = current_history_id
+            session.add(account)
+            session.commit()
+            
+        except Exception as e:
+            logger.error(f"Error checking new messages for {account.email}: {e}")
+            # Fallback: if historyId is too old, just update it and move on
+            try:
+                profile = service.users().getProfile(userId='me').execute()
+                account.last_history_id = profile.get('historyId')
+                session.add(account)
+                session.commit()
+            except:
+                pass
+
+    return new_messages_all
+
 async def sync_recent_contacts_warmup(account_id: int):
     with Session(engine) as session:
         service = get_gmail_service(account_id, session)
