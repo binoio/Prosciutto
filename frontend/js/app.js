@@ -30,6 +30,9 @@ async function init() {
     if (messageId === 'null') messageId = null;
     if (accountId === 'null') accountId = null;
 
+    setupEventDelegation();
+    setupKeyboardShortcuts();
+
     if (settings === 'true') {
         // Settings-only view mode
         const sidebar = document.getElementById('sidebar');
@@ -107,7 +110,6 @@ async function init() {
     } else {
         loadMailbox('INBOX');
     }
-    setupEventDelegation();
 }
 
 /**
@@ -268,6 +270,9 @@ async function loadSettings() {
     const remoteImagesEl = document.getElementById('setting-remote-images');
     if (remoteImagesEl) remoteImagesEl.checked = globalSettings.LOAD_REMOTE_IMAGES === 'true';
 
+    const keyboardShortcutsEl = document.getElementById('setting-keyboard-shortcuts');
+    if (keyboardShortcutsEl) keyboardShortcutsEl.checked = globalSettings.KEYBOARD_SHORTCUTS_ENABLED === 'true';
+
     // Populate Account Connectivity (Advanced)
     const enableDeletionEl = document.getElementById('setting-enable-deletion');
     if (enableDeletionEl) {
@@ -309,6 +314,7 @@ async function saveAllSettings() {
     const composeHtml = document.getElementById('setting-compose-html').checked;
     const markReadAuto = document.getElementById('setting-mark-read').checked;
     const warnDelete = document.getElementById('setting-warn-delete').checked;
+    const keyboardShortcuts = document.getElementById('setting-keyboard-shortcuts').checked;
     const defaultAccount = document.getElementById('setting-default-account').value;
     
     let enableDeletion = false;
@@ -348,6 +354,7 @@ async function saveAllSettings() {
         MARK_READ_AUTOMATICALLY: markReadAuto ? 'true' : 'false',
         WARN_BEFORE_DELETE: warnDelete ? 'true' : 'false',
         AUTOCOMPLETE_RECENTS: autocompleteRecents ? 'true' : 'false',
+        KEYBOARD_SHORTCUTS_ENABLED: keyboardShortcuts ? 'true' : 'false',
         AUTOCOMPLETE_ENABLED_ACCOUNTS: autocompleteEnabledAccounts
     };
     // Only include credentials if they are not disabled (not from env)
@@ -402,6 +409,7 @@ async function loadAccounts() {
         activeAccounts.forEach(acc => {
             const item = document.createElement('div');
             item.className = 'account-subset-item';
+            item.tabIndex = 0;
             item.innerText = acc.email;
             item.onclick = (e) => {
                 e.stopPropagation();
@@ -441,6 +449,7 @@ async function loadLabels(activeAccounts) {
     for (const acc of activeAccounts) {
         const accItem = document.createElement('div');
         accItem.className = 'mailbox-item';
+        accItem.tabIndex = 0;
         accItem.style.display = 'flex';
         accItem.style.alignItems = 'center';
         accItem.innerHTML = `
@@ -473,6 +482,7 @@ async function loadLabels(activeAccounts) {
                 labels.forEach(l => {
                     const item = document.createElement('div');
                     item.className = 'account-subset-item';
+                    item.tabIndex = 0;
                     item.innerText = l.name;
                     item.onclick = (e) => {
                         e.stopPropagation();
@@ -753,7 +763,9 @@ window.loadMailbox = async function(label, append = false, refresh = false) {
         renderSkeletons();
         const viewNameEl = document.getElementById('view-name');
         if (viewNameEl) {
-            viewNameEl.innerText = label === '' ? 'All Mail' : label.charAt(0) + label.slice(1).toLowerCase();
+            let displayName = label === '' ? 'All Mail' : label.charAt(0) + label.slice(1).toLowerCase();
+            if (label === 'DRAFT') displayName = 'Drafts';
+            viewNameEl.innerText = displayName;
         }
         document.getElementById('search-input').value = '';
         hideMessageDetail();
@@ -1056,6 +1068,7 @@ function createMessageRow(msg) {
     const isUnread = msg.labelIds && msg.labelIds.includes('UNREAD');
     item.className = `message-item ${isUnread ? 'unread' : ''}`;
     item.id = `msg-${msg.id}`;
+    item.tabIndex = 0;
     // Use data attributes for event delegation
     const accountId = msg.accountId || msg.account_id || currentAccountId;
     item.dataset.id = msg.id;
@@ -2550,6 +2563,151 @@ function selectAutocompleteItem(email, name, input) {
 function closeAutocomplete() {
     const dropdown = document.getElementById('autocomplete-dropdown');
     if (dropdown) dropdown.remove();
+}
+
+/**
+ * Keyboard shortcuts and navigation
+ */
+function setupKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        // Only proceed if keyboard shortcuts are enabled in settings
+        if (globalSettings.KEYBOARD_SHORTCUTS_ENABLED !== 'true') return;
+
+        // Protection against keyboard shortcuts invocation when text entry elements are in focus
+        const isTextEntry = (e.target.tagName === 'INPUT' && !['checkbox', 'radio', 'range', 'color'].includes(e.target.type)) ||
+                            e.target.tagName === 'TEXTAREA' ||
+                            e.target.isContentEditable === true ||
+                            e.target.contentEditable === 'true';
+        if (isTextEntry) return;
+        // Keyboard navigation
+        if (e.key === 'ArrowDown' || e.key === 'j') {
+            navigateFocus(1);
+            e.preventDefault();
+        } else if (e.key === 'ArrowUp' || e.key === 'k') {
+            navigateFocus(-1);
+            e.preventDefault();
+        } else if (e.key === 'ArrowRight' || e.key === 'l') {
+            if (document.activeElement && document.activeElement.classList.contains('modal-tab')) {
+                navigateFocus(1);
+                e.preventDefault();
+            } else if (document.activeElement && document.activeElement.classList.contains('mailbox-item')) {
+                // Right arrow expands unified mailbox
+                const triangle = document.activeElement.querySelector('.disclosure-triangle');
+                if (triangle && !triangle.classList.contains('expanded')) {
+                    triangle.click();
+                }
+                e.preventDefault();
+            }
+        } else if (e.key === 'ArrowLeft' || e.key === 'h') {
+            if (document.activeElement && document.activeElement.classList.contains('modal-tab')) {
+                navigateFocus(-1);
+                e.preventDefault();
+            } else if (document.activeElement && document.activeElement.classList.contains('mailbox-item')) {
+                // Left arrow collapses unified mailbox
+                const triangle = document.activeElement.querySelector('.disclosure-triangle');
+                if (triangle && triangle.classList.contains('expanded')) {
+                    triangle.click();
+                }
+                e.preventDefault();
+            }
+        } else if (e.key === 'Enter' || e.key === ' ') {
+            const active = document.activeElement;
+            if (active && (
+                active.classList.contains('message-item') ||
+                active.classList.contains('mailbox-item') ||
+                active.classList.contains('account-subset-item') ||
+                active.classList.contains('action-btn') ||
+                active.classList.contains('compose-btn') ||
+                active.classList.contains('modal-tab') ||
+                active.classList.contains('column-header') ||
+                active.id === 'refresh-btn' ||
+                active.id === 'settings-trigger' ||
+                active.id === 'sidebar-toggle-widget' ||
+                active.id === 'search-execute-btn' ||
+                active.id === 'advanced-search-toggle' ||
+                active.id === 'load-more-btn' ||
+                active.id === 'empty-mailbox-btn'
+            )) {
+                if (e.key === ' ' && active.classList.contains('message-item')) {
+                    // Space on message item toggles checkbox
+                    const cb = active.querySelector('.message-checkbox');
+                    if (cb) {
+                        cb.checked = !cb.checked;
+                        updateSelectionCount();
+                    }
+                } else {
+                    if (typeof active.click === 'function') {
+                        active.click();
+                    } else {
+                        const evt = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+                        active.dispatchEvent(evt);
+                    }
+                }
+                e.preventDefault();
+            }
+        }
+
+        // Shortcuts
+        if (e.key === '1') {
+            window.loadMailbox('INBOX');
+        } else if (e.key === '2') {
+            window.loadMailbox('SENT');
+        } else if (e.key === '3') {
+            window.loadMailbox('DRAFT');
+        } else if (e.key === '4') {
+            window.loadMailbox('TRASH');
+        } else if (e.key === '5') {
+            window.loadMailbox('');
+        } else if (e.key === 'b') {
+            toggleSidebarCollapse();
+        } else if (e.key === 'c') {
+            window.showComposer();
+        } else if (e.key === 'r') {
+            window.refreshMailbox();
+        } else if (e.key === ',') {
+            window.openSettings();
+        } else if (e.key === 'x') {
+            // Keyboard selection of checkboxes
+            const active = document.activeElement;
+            if (active) {
+                if (active.classList.contains('message-item')) {
+                    const cb = active.querySelector('.message-checkbox');
+                    if (cb) {
+                        cb.checked = !cb.checked;
+                        updateSelectionCount();
+                    }
+                } else if (active.id === 'multi-select-checkbox') {
+                    active.checked = !active.checked;
+                    toggleAllMessages(active);
+                }
+            }
+        }
+
+    });
+}
+
+function navigateFocus(direction) {
+    const focusableSelector = '.mailbox-item, .account-subset-item, .message-item, .compose-btn, .action-btn, .modal-tab, .column-header, #search-execute-btn, #advanced-search-toggle, #settings-trigger, #refresh-btn, #sidebar-toggle-widget, #multi-select-checkbox, #load-more-btn, #empty-mailbox-btn';
+    const items = Array.from(document.querySelectorAll(focusableSelector)).filter(el => {
+        // Filter out items that are not visible or have display: none
+        const style = window.getComputedStyle(el);
+        return style.display !== 'none' && style.visibility !== 'hidden' && el.offsetParent !== null;
+    });
+    
+    if (items.length === 0) return;
+
+    let index = items.indexOf(document.activeElement);
+    
+    if (index === -1) {
+        if (direction > 0) items[0].focus();
+        else items[items.length - 1].focus();
+    } else {
+        let nextIndex = index + direction;
+        // Wrap around or stay at boundaries? Gmail stays at boundaries for j/k.
+        if (nextIndex >= 0 && nextIndex < items.length) {
+            items[nextIndex].focus();
+        }
+    }
 }
 
 // Start the app

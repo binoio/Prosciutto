@@ -11,43 +11,43 @@
             <button class="compose-btn" onclick="showComposer()">+ Compose</button>
         </div>
         <div id="mailbox-list">
-            <div class="mailbox-item active" onclick="loadMailbox('INBOX')">
+            <div id="mailbox-INBOX" class="mailbox-item active" onclick="loadMailbox('INBOX')" tabindex="0">
                 <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'INBOX')">▶</span>
                 <i class="fa-solid fa-inbox"></i> Inbox
             </div>
             <div id="accounts-INBOX" class="account-subset"></div>
             
-            <div class="mailbox-item" onclick="loadMailbox('SENT')">
+            <div id="mailbox-SENT" class="mailbox-item" onclick="loadMailbox('SENT')" tabindex="0">
                 <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'SENT')">▶</span>
                 <i class="fa-solid fa-paper-plane"></i> Sent
             </div>
             <div id="accounts-SENT" class="account-subset"></div>
 
-            <div id="mailbox-item-STARRED" class="mailbox-item" onclick="loadMailbox('STARRED')">
+            <div id="mailbox-item-STARRED" class="mailbox-item" onclick="loadMailbox('STARRED')" tabindex="0">
                 <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'STARRED')">▶</span>
                 <i class="fa-solid fa-star"></i> Starred
             </div>
             <div id="accounts-STARRED" class="account-subset"></div>
 
-            <div class="mailbox-item" onclick="loadMailbox('DRAFT')">
+            <div id="mailbox-DRAFT" class="mailbox-item" onclick="loadMailbox('DRAFT')" tabindex="0">
                 <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'DRAFT')">▶</span>
                 <i class="fa-solid fa-file-lines"></i> Drafts
             </div>
             <div id="accounts-DRAFT" class="account-subset"></div>
 
-            <div class="mailbox-item" onclick="loadMailbox('TRASH')">
+            <div id="mailbox-TRASH" class="mailbox-item" onclick="loadMailbox('TRASH')" tabindex="0">
                 <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'TRASH')">▶</span>
                 <i class="fa-solid fa-trash"></i> Trash
             </div>
             <div id="accounts-TRASH" class="account-subset"></div>
 
-            <div class="mailbox-item" onclick="loadMailbox('SPAM')">
+            <div id="mailbox-SPAM" class="mailbox-item" onclick="loadMailbox('SPAM')" tabindex="0">
                 <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'SPAM')">▶</span>
                 <i class="fa-solid fa-circle-exclamation"></i> Spam
             </div>
             <div id="accounts-SPAM" class="account-subset"></div>
 
-            <div class="mailbox-item" onclick="loadMailbox('')">
+            <div id="mailbox-ALL" class="mailbox-item" onclick="loadMailbox('')" tabindex="0">
                 <span class="disclosure-triangle" onclick="toggleDisclosure(event, 'ALL')">▶</span>
                 <i class="fa-solid fa-envelope-open-text"></i> All Mail
             </div>
@@ -57,7 +57,7 @@
             <div id="labels-container"></div>
         </div>
 
-        <div id="sidebar-toggle-widget" onclick="toggleSidebarCollapse()">
+        <div id="sidebar-toggle-widget" onclick="toggleSidebarCollapse()" tabindex="0">
             <i id="sidebar-toggle-icon" class="fa-solid fa-chevron-left"></i>
         </div>
     </div>
@@ -69,10 +69,10 @@
                 <div class="search-inner">
                     <i class="fa-solid fa-magnifying-glass search-icon"></i>
                     <input type="text" id="search-input" placeholder="Search mail" onkeyup="handleSearch(event)">
-                    <div id="search-execute-btn" onclick="performSearch()" title="Execute Search">
+                    <div id="search-execute-btn" onclick="performSearch()" title="Execute Search" tabindex="0">
                         <i class="fa-solid fa-arrow-right"></i>
                     </div>
-                    <div id="advanced-search-toggle" onclick="toggleAdvancedSearch(event)">
+                    <div id="advanced-search-toggle" onclick="toggleAdvancedSearch(event)" tabindex="0">
                         <i class="fa-solid fa-sliders"></i>
                     </div>
                     <div id="advanced-search-dropdown" class="advanced-search-dropdown" onclick="event.stopPropagation()">
@@ -113,27 +113,27 @@
                     </div>
                 </div>
             </div>
-            <div id="settings-trigger" onclick="openSettings()"><i class="fa-solid fa-gear"></i></div>
+            <div id="settings-trigger" onclick="openSettings()" tabindex="0"><i class="fa-solid fa-gear"></i></div>
         </div>
         
         <div id="content">
             <div id="message-list-container">
                 <div id="message-list-header">
-                    <div id="refresh-btn" onclick="window.refreshMailbox()" title="Refresh Mailbox">
+                    <div id="refresh-btn" onclick="window.refreshMailbox()" title="Refresh Mailbox" tabindex="0">
                         <i class="fa-solid fa-rotate"></i>
                     </div>
                     <input type="checkbox" id="multi-select-checkbox" onclick="toggleAllMessages(this)">
 
-                    <div class="column-header col-sender flex-shrink-0" onclick="sortMessages('from')">
+                    <div class="column-header col-sender flex-shrink-0" onclick="sortMessages('from')" tabindex="0">
                         From <span id="sort-from" class="sort-icon"></span>
                         <div class="resizer" data-column="sender"></div>
                     </div>
 
-                    <div class="column-header flex-1" onclick="sortMessages('subject')">
+                    <div class="column-header flex-1" onclick="sortMessages('subject')" tabindex="0">
                         Subject <span id="sort-subject" class="sort-icon"></span>
                     </div>
 
-                    <div class="column-header justify-end flex-shrink-0 col-date" onclick="sortMessages('internalDate')">
+                    <div class="column-header justify-end flex-shrink-0 col-date" onclick="sortMessages('internalDate')" tabindex="0">
                         Date <span id="sort-internalDate" class="sort-icon"></span>
                     </div>
 
@@ -173,11 +173,11 @@
             </div>
             <div class="modal-body">
                 <div class="modal-tabs">
-                    <div class="modal-tab active" data-tab="accounts" onclick="switchTab('accounts')">Accounts</div>
-                    <div class="modal-tab" data-tab="general" onclick="switchTab('general')">General</div>
-                    <div class="modal-tab" data-tab="appearance" onclick="switchTab('appearance')">Appearance</div>
-                    <div class="modal-tab" data-tab="autocomplete" onclick="switchTab('autocomplete')">Auto-complete</div>
-                    <div class="modal-tab" data-tab="advanced" onclick="switchTab('advanced')">Advanced</div>
+                    <div class="modal-tab active" data-tab="accounts" onclick="switchTab('accounts')" tabindex="0">Accounts</div>
+                    <div class="modal-tab" data-tab="general" onclick="switchTab('general')" tabindex="0">General</div>
+                    <div class="modal-tab" data-tab="appearance" onclick="switchTab('appearance')" tabindex="0">Appearance</div>
+                    <div class="modal-tab" data-tab="autocomplete" onclick="switchTab('autocomplete')" tabindex="0">Auto-complete</div>
+                    <div class="modal-tab" data-tab="advanced" onclick="switchTab('advanced')" tabindex="0">Advanced</div>
                 </div>
                 <div class="modal-content">
                     <!-- Accounts Tab -->
@@ -221,6 +221,10 @@
                         <div class="form-group">
                             <input type="checkbox" id="setting-remote-images" class="checkbox-inline" onchange="saveAllSettings()">
                             <label for="setting-remote-images">Load remote images in messages</label>
+                        </div>
+                        <div class="form-group">
+                            <input type="checkbox" id="setting-keyboard-shortcuts" class="checkbox-inline" onchange="saveAllSettings()">
+                            <label for="setting-keyboard-shortcuts">Enable keyboard shortcuts and navigation</label>
                         </div>
                     </div>
 
