@@ -47,8 +47,8 @@ def get_requested_scopes():
 SCOPES = get_requested_scopes()
 
 # VAPID Keys for Web Push
-VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "cCsAbx2v2CnxFRpXJvx6EpRo4YIjiBcoONTB5T3DFng")
-VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "BGlyZ73Ur1gP4Pely9fKhgDB978KK0Xho50gaMDiukwUjMZNETxsJw4gUJ4X8tvPF-BaEiUoxFG8cbyVfnbHg6w")
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_CLAIMS = {
     "sub": "mailto:admin@prosciutto.local"
 }
