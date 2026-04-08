@@ -49,3 +49,14 @@ class PushSubscription(SQLModel, table=True):
     auth: str
     user_agent: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class NewMailNotification(SQLModel, table=True):
+    __table_args__ = {"extend_existing": True}
+    id: Optional[int] = Field(default=None, primary_key=True)
+    message_id: str
+    account_id: int
+    account_email: str
+    subject: Optional[str] = None
+    sender: Optional[str] = None
+    discovered_at: datetime = Field(default_factory=datetime.utcnow)
+    is_seen: bool = Field(default=False)

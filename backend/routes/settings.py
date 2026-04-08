@@ -78,6 +78,11 @@ async def get_stats(session: Session = Depends(get_session)):
                 for f in files:
                     cache_dir_size += os.path.getsize(os.path.join(root, f))
 
+        settings_list = session.exec(select(Setting)).all()
+        settings_dict = {s.key: s.value for s in settings_list}
+        env_enable_deletion = os.getenv("ENABLE_DELETION_SCOPE")
+        actual_enable_deletion = env_enable_deletion if env_enable_deletion is not None else settings_dict.get("ENABLE_DELETION_SCOPE", "false")
+
         return {
             "accounts": len(account_count),
             "recent_contacts": len(recent_count),

@@ -26,7 +26,20 @@ self.addEventListener('push', function(event) {
     };
 
     event.waitUntil(
-        self.registration.showNotification(title, options)
+        self.registration.showNotification(title, options).then(() => {
+            // Also notify any open windows to refresh their UI
+            return clients.matchAll({
+                type: 'window',
+                includeUncontrolled: true
+            }).then(function(windowClients) {
+                windowClients.forEach(function(client) {
+                    client.postMessage({
+                        type: 'NEW_MAIL',
+                        data: data
+                    });
+                });
+            });
+        })
     );
 });
 

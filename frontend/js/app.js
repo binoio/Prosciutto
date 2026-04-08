@@ -125,6 +125,15 @@ async function registerServiceWorker() {
         try {
             const registration = await navigator.serviceWorker.register('/js/sw.js');
             
+            navigator.serviceWorker.addEventListener('message', event => {
+                if (event.data && event.data.type === 'NEW_MAIL') {
+                    // Only refresh if we're in a relevant view
+                    if (currentLabel === 'INBOX' || currentLabel === 'UNIFIED') {
+                        refreshMailbox();
+                    }
+                }
+            });
+            
         } catch (err) {
             console.error('Service Worker registration failed:', err);
         }

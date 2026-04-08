@@ -1,10 +1,11 @@
 from typing import List, Optional
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import Session, select
 from pydantic import BaseModel
 
 from backend.db import get_session
-from backend.models import Account, PushSubscription
+from backend.models import Account, PushSubscription, NewMailNotification
 from backend.services.gmail_service import (
     get_gmail_service, 
     get_detailed_messages_batch, 
@@ -57,7 +58,31 @@ async def unsubscribe_push(request_data: PushSubscriptionRequest, session: Sessi
 
 @router.get("/check-new-messages")
 async def check_new_messages(session: Session = Depends(get_session)):
-    return await check_new_messages_internal(session)
+    # Return notifications from the last 2 minutes to allow multiple tabs to see them
+    two_minutes_ago = datetime.utcnow() - timedelta(minutes=2)
+    notifications = session.exec(
+        select(NewMailNotification).where(NewMailNotification.discovered_at > two_minutes_ago)
+    ).all()
+    
+    # Background cleanup of older notifications
+    five_minutes_ago = datetime.utcnow() - timedelta(minutes=5)
+    old_notifications = session.exec(
+        select(NewMailNotification).where(NewMailNotification.discovered_at < five_minutes_ago)
+    ).all()
+    for old in old_notifications:
+        session.delete(old)
+    session.commit()
+    
+    results = []
+    for n in notifications:
+        results.append({
+            "id": n.message_id,
+            "account_id": n.account_id,
+            "account_email": n.account_email,
+            "subject": n.subject,
+            "from": n.sender
+        })
+    return results
 
 @router.get("")
 async def list_accounts(session: Session = Depends(get_session)):

@@ -15,6 +15,7 @@ from backend.db import create_db_and_tables, engine
 from backend.routes import auth, accounts, messages, contacts, settings
 from backend.services.gmail_service import check_new_messages_internal
 from backend.services.notification_service import notify_all_subscriptions
+from backend.models import NewMailNotification
 
 # Initialize Limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -37,6 +38,16 @@ async def notification_worker():
                 if new_messages:
                     logger.info(f"Found {len(new_messages)} new messages, sending push notifications.")
                     for msg in new_messages:
+                        # Save to DB for frontend polling
+                        notification = NewMailNotification(
+                            message_id=msg.get("id"),
+                            account_id=msg.get("account_id"),
+                            account_email=msg.get("account_email"),
+                            subject=msg.get("subject"),
+                            sender=msg.get("from")
+                        )
+                        session.add(notification)
+                        
                         push_data = {
                             "title": f"New Mail: {msg.get('subject', '(No Subject)')}",
                             "body": f"From: {msg.get('from')}\nAccount: {msg.get('account_email')}",
@@ -44,6 +55,7 @@ async def notification_worker():
                             "account_id": msg.get("account_id")
                         }
                         await notify_all_subscriptions(push_data, session)
+                    session.commit()
         except Exception as e:
             logger.error(f"Error in notification worker: {e}")
         except asyncio.CancelledError:
