@@ -84,6 +84,11 @@ async def check_new_messages(session: Session = Depends(get_session)):
         })
     return results
 
+@router.get("/internal/check-new-messages")
+async def internal_check_new_messages(session: Session = Depends(get_session)):
+    """Internal endpoint for testing discovery logic without the background worker."""
+    return await check_new_messages_internal(session)
+
 @router.get("")
 async def list_accounts(session: Session = Depends(get_session)):
     accounts = session.exec(select(Account)).all()

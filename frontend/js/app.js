@@ -106,7 +106,7 @@ async function init() {
     }
     await loadAccounts();
 
-    const registration = await registerServiceWorker();
+    registerServiceWorker();
 
     if (accounts.length === 0) {
         const firstRun = document.getElementById('first-run-prompt');

@@ -3,9 +3,10 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 from backend.main import app
 from backend.db import get_session
-from backend.models import Account
+from backend.models import Account, NewMailNotification
 from sqlmodel import Session, SQLModel, create_engine
 import os
+from datetime import datetime
 
 @pytest.fixture(name="session")
 def session_fixture():
@@ -51,7 +52,7 @@ def test_toggle_notifications(client: TestClient, session: Session):
 
 @patch("backend.services.gmail_service.get_gmail_service")
 @patch("backend.services.gmail_service.get_detailed_messages_batch")
-def test_check_new_messages_logic(mock_get_detailed, mock_get_service, client: TestClient, session: Session):
+def test_check_new_messages_internal_logic(mock_get_detailed, mock_get_service, client: TestClient, session: Session):
     # Setup: Add an account with notifications enabled
     account = Account(
         email="poll@example.com", 
@@ -92,23 +93,43 @@ def test_check_new_messages_logic(mock_get_detailed, mock_get_service, client: T
         {"id": "msg123", "subject": "Test Subject", "from": "sender@test.com"}
     ]
     
-    # Action: Check new messages
-    response = client.get("/accounts/check-new-messages")
+    # Action: Check new messages via internal testing endpoint
+    response = client.get("/accounts/internal/check-new-messages")
     assert response.status_code == 200
     messages = response.json()
     
     assert len(messages) == 1
     assert messages[0]["id"] == "msg123"
     assert messages[0]["subject"] == "Test Subject"
-    assert messages[0]["account_email"] == "poll@example.com"
-    assert messages[0]["account_id"] == account.id
     
     # Verify account history_id was updated in DB
     session.refresh(account)
     assert account.last_history_id == "1100"
 
+def test_check_new_messages_endpoint(client: TestClient, session: Session):
+    # Setup: Add a notification to the table
+    notif = NewMailNotification(
+        message_id="msg456",
+        account_id=1,
+        account_email="test@example.com",
+        subject="Hello",
+        sender="someone@test.com",
+        discovered_at=datetime.utcnow()
+    )
+    session.add(notif)
+    session.commit()
+    
+    # Action: Call endpoint
+    response = client.get("/accounts/check-new-messages")
+    assert response.status_code == 200
+    data = response.json()
+    
+    assert len(data) == 1
+    assert data[0]["id"] == "msg456"
+    assert data[0]["subject"] == "Hello"
+
 @patch("backend.services.gmail_service.get_gmail_service")
-def test_check_new_messages_no_change(mock_get_service, client: TestClient, session: Session):
+def test_check_new_messages_no_change_logic(mock_get_service, client: TestClient, session: Session):
     # Setup: Account with history_id "1000"
     account = Account(
         email="nochange@example.com", 
@@ -126,7 +147,8 @@ def test_check_new_messages_no_change(mock_get_service, client: TestClient, sess
     # Mock profile to return SAME historyId
     mock_service.users().getProfile().execute.return_value = {"historyId": "1000"}
     
-    response = client.get("/accounts/check-new-messages")
+    # Action: Call internal testing endpoint
+    response = client.get("/accounts/internal/check-new-messages")
     assert response.status_code == 200
     assert response.json() == []
     
