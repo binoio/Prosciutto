@@ -21,7 +21,7 @@ let columnWidths = {
  */
 async function init() {
     
-    registerServiceWorker();
+    const registration = await registerServiceWorker();
     document.documentElement.style.setProperty('--sender-width', `${columnWidths.sender}px`);
     const urlParams = new URLSearchParams(window.location.search);
     let messageId = urlParams.get('messageId');
@@ -113,6 +113,16 @@ async function init() {
         loadMailbox('INBOX');
     }
     startNewMailPolling();
+
+    // Check if any account has notifications enabled and ensure we're subscribed
+    if (Notification.permission === 'granted' && accounts.some(a => a.notifications_enabled)) {
+        if (registration) {
+            subscribeToPushNotifications(registration);
+        } else {
+            // Wait for it
+            navigator.serviceWorker.ready.then(reg => subscribeToPushNotifications(reg));
+        }
+    }
     
 }
 
@@ -121,22 +131,56 @@ async function init() {
  * Register Service Worker for Web Push
  */
 async function registerServiceWorker() {
+    console.log('registerServiceWorker called');
     if ('serviceWorker' in navigator && 'PushManager' in window) {
         try {
             const registration = await navigator.serviceWorker.register('/js/sw.js');
             
             navigator.serviceWorker.addEventListener('message', event => {
                 if (event.data && event.data.type === 'NEW_MAIL') {
+                    // Mark as notified in localStorage to prevent polling duplicate
+                    if (event.data.data && event.data.data.id) {
+                        markMessageAsNotified(event.data.data.id);
+                    }
                     // Only refresh if we're in a relevant view
                     if (currentLabel === 'INBOX' || currentLabel === 'UNIFIED') {
                         refreshMailbox();
                     }
                 }
             });
+
+            // Wait until the service worker is ready before subscribing
+            const ready = await navigator.serviceWorker.ready;
+            
+            // We'll call subscription check here too if accounts are already loaded, 
+            // or rely on init() to call it after loadAccounts().
+            // Actually, calling it here after ready is safer.
+            if (Notification.permission === 'granted' && accounts.some(a => a.notifications_enabled)) {
+                await subscribeToPushNotifications(ready);
+            }
+            return ready;
             
         } catch (err) {
             console.error('Service Worker registration failed:', err);
         }
+    }
+    return null;
+}
+
+/**
+ * Sync notified message IDs with localStorage to prevent duplicates across tabs
+ */
+function isMessageNotified(id) {
+    const notified = JSON.parse(localStorage.getItem('notifiedMessageIds') || '[]');
+    return notified.includes(id);
+}
+
+function markMessageAsNotified(id) {
+    let notified = JSON.parse(localStorage.getItem('notifiedMessageIds') || '[]');
+    if (!notified.includes(id)) {
+        notified.push(id);
+        if (notified.length > 50) notified.shift();
+        localStorage.setItem('notifiedMessageIds', JSON.stringify(notified));
     }
 }
 
@@ -161,19 +205,33 @@ function urlBase64ToUint8Array(base64String) {
 /**
  * Subscribe to Push Notifications
  */
-async function subscribeToPushNotifications() {
+async function subscribeToPushNotifications(passedRegistration = null) {
     try {
-        const registration = await navigator.serviceWorker.ready;
+        const registration = passedRegistration || await navigator.serviceWorker.ready;
         const configRes = await fetch('/accounts/push-config');
         const config = await configRes.json();
         
-        const subscription = await registration.pushManager.subscribe({
+        if (!config.public_key) {
+            console.warn('VAPID public key not configured on server.');
+            return false;
+        }
+
+        const applicationServerKey = urlBase64ToUint8Array(config.public_key);
+        
+        // Check for existing subscription
+        let subscription = await registration.pushManager.getSubscription();
+        
+        if (subscription) {
+            await subscription.unsubscribe();
+        }
+
+        subscription = await registration.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(config.public_key)
+            applicationServerKey: applicationServerKey
         });
 
         const subObj = JSON.parse(JSON.stringify(subscription));
-        await fetch('/accounts/subscribe-push', {
+        const res = await fetch('/accounts/subscribe-push', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -183,6 +241,10 @@ async function subscribeToPushNotifications() {
             })
         });
         
+        if (!res.ok) {
+            console.error('Failed to send subscription to backend');
+            return false;
+        }
         
         return true;
     } catch (err) {
@@ -238,6 +300,10 @@ async function startNewMailPolling() {
                 const newMessages = await res.json();
                 if (newMessages && newMessages.length > 0) {
                     newMessages.forEach(msg => {
+                        // Check if already notified via Web Push or another tab
+                        if (isMessageNotified(msg.id)) return;
+                        markMessageAsNotified(msg.id);
+
                         const title = `New Mail: ${msg.subject || '(No Subject)'}`;
                         const options = {
                             body: `From: ${msg.from}\nAccount: ${msg.account_email}`,
