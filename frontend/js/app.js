@@ -21,7 +21,6 @@ let columnWidths = {
  */
 async function init() {
     
-    const registration = await registerServiceWorker();
     document.documentElement.style.setProperty('--sender-width', `${columnWidths.sender}px`);
     const urlParams = new URLSearchParams(window.location.search);
     let messageId = urlParams.get('messageId');
@@ -106,6 +105,9 @@ async function init() {
         setSidebarCollapsed(true);
     }
     await loadAccounts();
+
+    const registration = await registerServiceWorker();
+
     if (accounts.length === 0) {
         const firstRun = document.getElementById('first-run-prompt');
         if (firstRun) firstRun.style.display = 'flex';
@@ -113,16 +115,6 @@ async function init() {
         loadMailbox('INBOX');
     }
     startNewMailPolling();
-
-    // Check if any account has notifications enabled and ensure we're subscribed
-    if (Notification.permission === 'granted' && accounts.some(a => a.notifications_enabled)) {
-        if (registration) {
-            subscribeToPushNotifications(registration);
-        } else {
-            // Wait for it
-            navigator.serviceWorker.ready.then(reg => subscribeToPushNotifications(reg));
-        }
-    }
     
 }
 
@@ -131,7 +123,6 @@ async function init() {
  * Register Service Worker for Web Push
  */
 async function registerServiceWorker() {
-    console.log('registerServiceWorker called');
     if ('serviceWorker' in navigator && 'PushManager' in window) {
         try {
             const registration = await navigator.serviceWorker.register('/js/sw.js');
