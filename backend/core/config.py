@@ -46,6 +46,13 @@ def get_requested_scopes():
 
 SCOPES = get_requested_scopes()
 
+# VAPID Keys for Web Push
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
+VAPID_CLAIMS = {
+    "sub": "mailto:admin@prosciutto.local"
+}
+
 def get_client_config():
     client_id = os.getenv("GOOGLE_CLIENT_ID")
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET")

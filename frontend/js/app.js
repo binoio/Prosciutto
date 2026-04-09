@@ -20,6 +20,7 @@ let columnWidths = {
  * Initialize the application
  */
 async function init() {
+    
     document.documentElement.style.setProperty('--sender-width', `${columnWidths.sender}px`);
     const urlParams = new URLSearchParams(window.location.search);
     let messageId = urlParams.get('messageId');
@@ -104,18 +105,228 @@ async function init() {
         setSidebarCollapsed(true);
     }
     await loadAccounts();
+
+    registerServiceWorker();
+
     if (accounts.length === 0) {
         const firstRun = document.getElementById('first-run-prompt');
         if (firstRun) firstRun.style.display = 'flex';
     } else {
         loadMailbox('INBOX');
     }
+    startNewMailPolling();
+    
+}
+
+
+/**
+ * Register Service Worker for Web Push
+ */
+async function registerServiceWorker() {
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+        try {
+            const registration = await navigator.serviceWorker.register('/js/sw.js');
+            
+            navigator.serviceWorker.addEventListener('message', event => {
+                if (event.data && event.data.type === 'NEW_MAIL') {
+                    // Mark as notified in localStorage to prevent polling duplicate
+                    if (event.data.data && event.data.data.id) {
+                        markMessageAsNotified(event.data.data.id);
+                    }
+                    // Only refresh if we're in a relevant view
+                    if (currentLabel === 'INBOX' || currentLabel === 'UNIFIED') {
+                        refreshMailbox();
+                    }
+                }
+            });
+
+            // Wait until the service worker is ready before subscribing
+            const ready = await navigator.serviceWorker.ready;
+            
+            // We'll call subscription check here too if accounts are already loaded, 
+            // or rely on init() to call it after loadAccounts().
+            // Actually, calling it here after ready is safer.
+            if (Notification.permission === 'granted' && accounts.some(a => a.notifications_enabled)) {
+                await subscribeToPushNotifications(ready);
+            }
+            return ready;
+            
+        } catch (err) {
+            console.error('Service Worker registration failed:', err);
+        }
+    }
+    return null;
+}
+
+/**
+ * Sync notified message IDs with localStorage to prevent duplicates across tabs
+ */
+function isMessageNotified(id) {
+    const notified = JSON.parse(localStorage.getItem('notifiedMessageIds') || '[]');
+    return notified.includes(id);
+}
+
+function markMessageAsNotified(id) {
+    let notified = JSON.parse(localStorage.getItem('notifiedMessageIds') || '[]');
+    if (!notified.includes(id)) {
+        notified.push(id);
+        if (notified.length > 50) notified.shift();
+        localStorage.setItem('notifiedMessageIds', JSON.stringify(notified));
+    }
+}
+
+/**
+ * Convert Base64 URL-safe to Uint8Array for VAPID key
+ */
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+        .replace(/\-/g, '+')
+        .replace(/_/g, '/');
+
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+/**
+ * Subscribe to Push Notifications
+ */
+async function subscribeToPushNotifications(passedRegistration = null) {
+    try {
+        const registration = passedRegistration || await navigator.serviceWorker.ready;
+        const configRes = await fetch('/accounts/push-config');
+        const config = await configRes.json();
+        
+        if (!config.public_key) {
+            console.warn('VAPID public key not configured on server.');
+            return false;
+        }
+
+        const applicationServerKey = urlBase64ToUint8Array(config.public_key);
+        
+        // Check for existing subscription
+        let subscription = await registration.pushManager.getSubscription();
+        
+        if (subscription) {
+            await subscription.unsubscribe();
+        }
+
+        subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: applicationServerKey
+        });
+
+        const subObj = JSON.parse(JSON.stringify(subscription));
+        const res = await fetch('/accounts/subscribe-push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                endpoint: subObj.endpoint,
+                p256dh: subObj.keys.p256dh,
+                auth: subObj.keys.auth
+            })
+        });
+        
+        if (!res.ok) {
+            console.error('Failed to send subscription to backend');
+            return false;
+        }
+        
+        return true;
+    } catch (err) {
+        console.error('Failed to subscribe to Web Push:', err);
+        return false;
+    }
+}
+
+/**
+ * Unsubscribe from Push Notifications
+ */
+async function unsubscribeFromPushNotifications() {
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription();
+        if (subscription) {
+            const subObj = JSON.parse(JSON.stringify(subscription));
+            await fetch('/accounts/unsubscribe-push', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    endpoint: subObj.endpoint,
+                    p256dh: subObj.keys.p256dh,
+                    auth: subObj.keys.auth
+                })
+            });
+            await subscription.unsubscribe();
+            
+        }
+        return true;
+    } catch (err) {
+        console.error('Failed to unsubscribe from Web Push:', err);
+        return false;
+    }
+}
+
+/**
+ * Poll for new mail every minute and show notifications
+ */
+async function startNewMailPolling() {
+    // Only poll in the main window
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('settings') === 'true' || urlParams.get('compose') === 'true' || urlParams.get('messageId')) {
+        return;
+    }
+
+    const POLLING_INTERVAL = 60000; // 1 minute
+
+    setInterval(async () => {
+        try {
+            const res = await fetch('/accounts/check-new-messages');
+            if (res.ok) {
+                const newMessages = await res.json();
+                if (newMessages && newMessages.length > 0) {
+                    newMessages.forEach(msg => {
+                        // Check if already notified via Web Push or another tab
+                        if (isMessageNotified(msg.id)) return;
+                        markMessageAsNotified(msg.id);
+
+                        const title = `New Mail: ${msg.subject || '(No Subject)'}`;
+                        const options = {
+                            body: `From: ${msg.from}\nAccount: ${msg.account_email}`,
+                            icon: '/favicon.ico'
+                        };
+                        
+                        if (Notification.permission === "granted") {
+                            const n = new Notification(title, options);
+                            n.onclick = () => {
+                                window.focus();
+                                window.showMessage(msg.id, msg.account_id); // Assuming we have account_id, need to add it to backend response
+                            };
+                        }
+                    });
+                    
+                    // Also refresh the current mailbox if we're in INBOX or UNIFIED
+                    if (currentLabel === 'INBOX' || currentLabel === 'UNIFIED') {
+                        refreshMailbox();
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Error polling for new mail:", err);
+        }
+    }, POLLING_INTERVAL);
 }
 
 /**
  * Setup event delegation for the message list to avoid multiple listeners
  */
 function setupEventDelegation() {
+    
     const list = document.getElementById('message-list');
     if (!list) return;
 
@@ -550,12 +761,20 @@ window.renderAccountsInSettings = function() {
         list.innerHTML = '';
         accounts.forEach(acc => {
             const row = document.createElement('div');
-            row.className = 'account-row display-flex align-center';
+            row.className = 'account-row display-flex align-center flex-wrap';
             const displayName = acc.name ? `${acc.name} (${acc.email})` : acc.email;
             row.innerHTML = `
-                <input type="checkbox" class="checkbox-inline" ${acc.is_active ? 'checked' : ''} onchange="toggleAccountActive(${acc.id}, this.checked)">
-                <span class="flex-1 ${!acc.is_active ? 'text-strike text-gray' : ''}">${displayName}</span>
-                <button class="compose-btn btn-inline bg-light-gray" onclick="removeAccount(${acc.id}, '${acc.email}')">Remove</button>
+                <div class="display-flex align-center flex-1">
+                    <input type="checkbox" class="checkbox-inline" ${acc.is_active ? 'checked' : ''} onchange="toggleAccountActive(${acc.id}, this.checked)" title="Enable Account">
+                    <span class="font-14 ${!acc.is_active ? 'text-strike text-gray' : ''}">${displayName}</span>
+                </div>
+                <div class="display-flex align-center">
+                    <label class="font-12 text-gray mr-10 display-flex align-center">
+                        <input type="checkbox" class="checkbox-inline mr-5" ${acc.notifications_enabled ? 'checked' : ''} onchange="toggleAccountNotifications(${acc.id}, this.checked)">
+                        Notifications
+                    </label>
+                    <button class="compose-btn btn-inline bg-light-gray" onclick="removeAccount(${acc.id}, '${acc.email}')">Remove</button>
+                </div>
             `;
             list.appendChild(row);
         });
@@ -607,6 +826,44 @@ async function toggleAccountActive(id, isActive) {
     } catch (err) {
         console.error(err);
         alert("An error occurred while updating account status");
+        renderAccountsInSettings();
+    }
+}
+
+async function toggleAccountNotifications(id, isEnabled) {
+    try {
+        const res = await fetch(`/accounts/${id}/toggle-notifications`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_active: isEnabled })
+        });
+        if (res.ok) {
+            await loadAccounts();
+            renderAccountsInSettings();
+            
+            if (isEnabled) {
+                if (Notification.permission === "default") {
+                    const permission = await Notification.requestPermission();
+                    if (permission === "granted") {
+                        await subscribeToPushNotifications();
+                    }
+                } else if (Notification.permission === "granted") {
+                    await subscribeToPushNotifications();
+                } else {
+                    alert("Please enable notifications in your browser settings to receive new mail alerts.");
+                }
+            } else {
+                // If NO other account has notifications enabled, we could unsubscribe.
+                // But keeping the subscription is fine, the server will only send if an account is enabled.
+                const anyEnabled = accounts.some(a => a.id !== id && a.notifications_enabled);
+                if (!anyEnabled) {
+                    await unsubscribeFromPushNotifications();
+                }
+            }
+        }
+    } catch (err) {
+        console.error(err);
+        alert("An error occurred while updating notification settings");
         renderAccountsInSettings();
     }
 }
@@ -1623,9 +1880,11 @@ window.loadImages = function() {
 }
 
 window.toggleComposeField = function(field) {
+    
     const group = document.getElementById('group-' + field);
     const toggle = document.getElementById('toggle-' + field);
     if (group) {
+        
         group.classList.remove('display-none');
         group.style.display = 'flex';
     }
