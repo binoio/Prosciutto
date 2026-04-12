@@ -292,6 +292,13 @@
                             <label>Google Client ID <span id="client-id-env-badge" class="env-badge display-none">Set via .env</span></label>
                             <input type="text" id="client-id" placeholder="Client ID" onchange="saveAllSettings()">
                         </div>
+                        <div class="form-group">
+                            <label>Google Application Type <span id="app-type-env-badge" class="env-badge display-none">Set via .env</span></label>
+                            <select id="oauth-app-type" onchange="saveAllSettings(); toggleClientSecretVisibility()">
+                                <option value="web">Web Application (Requires Secret)</option>
+                                <option value="desktop">Desktop App (No Secret / PKCE)</option>
+                            </select>
+                        </div>
                         <div class="form-group" id="client-secret-group">
                             <label>Google Client Secret <span id="client-secret-env-badge" class="env-badge display-none">Set via .env</span></label>
                             <input type="password" id="client-secret" placeholder="Client Secret" onchange="saveAllSettings()">

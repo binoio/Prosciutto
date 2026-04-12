@@ -398,6 +398,9 @@ async function loadSettings() {
     // Populate General Settings
     const clientIdEl = document.getElementById('client-id');
     if (clientIdEl) clientIdEl.value = globalSettings.GOOGLE_CLIENT_ID || '';
+
+    const appTypeEl = document.getElementById('oauth-app-type');
+    if (appTypeEl) appTypeEl.value = globalSettings.OAUTH_APP_TYPE || 'web';
     
     const clientSecretEl = document.getElementById('client-secret');
     if (clientSecretEl) clientSecretEl.value = globalSettings.GOOGLE_CLIENT_SECRET || '';
@@ -430,9 +433,12 @@ async function loadSettings() {
     }
 
     const clientIdEnvBadge = document.getElementById('client-id-env-badge');
+    const appTypeEnvBadge = document.getElementById('app-type-env-badge');
     if (globalSettings.is_client_id_env) {
         if (clientIdEl) clientIdEl.disabled = true;
         if (clientIdEnvBadge) clientIdEnvBadge.style.display = 'inline-block';
+        if (appTypeEl) appTypeEl.disabled = true;
+        if (appTypeEnvBadge) appTypeEnvBadge.style.display = 'inline-block';
     }
     
     const clientSecretEnvBadge = document.getElementById('client-secret-env-badge');
@@ -550,6 +556,7 @@ async function saveAllSettings() {
 
     const clientId = document.getElementById('client-id').value;
     const clientSecret = document.getElementById('client-secret').value;
+    const appType = document.getElementById('oauth-app-type').value;
 
     const data = {
         THEME: theme,
@@ -571,6 +578,7 @@ async function saveAllSettings() {
     // Only include credentials if they are not disabled (not from env)
     if (!document.getElementById('client-id').disabled) {
         data.GOOGLE_CLIENT_ID = clientId;
+        data.OAUTH_APP_TYPE = appType;
     }
     if (!document.getElementById('client-secret').disabled) {
         data.GOOGLE_CLIENT_SECRET = clientSecret;

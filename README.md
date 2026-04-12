@@ -119,9 +119,22 @@ Open [http://localhost:8000](http://localhost:8000) in your browser.
 ### 4. Configuration
 
 1. Go to the **Settings** panel in the web app.
-2. Enter your **Google Client ID** and **Google Client Secret** obtained from the GCP Console (if not loaded via `.env`).
+2. Enter your **Google Client ID** and **Google Client Secret** (if using `web` mode).
 3. Click **Save Settings**.
 4. Click **+ Add Account** to authenticate your Google accounts.
+
+#### App-like (Desktop) Mode (Client ID only)
+
+If you wish to distribute the application without providing a Client Secret (for example, to end users running the stack locally in a container), you can configure it as a **Desktop** application in the Google Cloud Console.
+
+1. In the [GCP Credentials Console](https://console.cloud.google.com/apis/credentials), create a **Desktop App** OAuth 2.0 Client ID.
+2. Note your **Client ID** (you will not need a Client Secret for Desktop Apps).
+3. In your `.env` file, set:
+   ```env
+   GOOGLE_CLIENT_ID=your_desktop_client_id.apps.googleusercontent.com
+   OAUTH_APP_TYPE=desktop
+   ```
+4. Restart the app. Prosciutto will now use **PKCE (Proof Key for Code Exchange)** for the OAuth flow, which does not require a client secret.
 
 **Note on Permanent Deletion**: By default, the app requests the `gmail.modify` scope, which allows moving messages to the Trash but does *not* allow permanent deletion (using the "Permanently Delete" action in the Trash/Spam folders). To enable permanent deletion, you must:
 1. Create a `.env` file in the project root.

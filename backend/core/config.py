@@ -61,14 +61,20 @@ def get_client_config():
     with Session(engine) as session:
         client_id_setting = session.exec(select(Setting).where(Setting.key == "GOOGLE_CLIENT_ID")).first()
         client_secret_setting = session.exec(select(Setting).where(Setting.key == "GOOGLE_CLIENT_SECRET")).first()
+        app_type_setting = session.exec(select(Setting).where(Setting.key == "OAUTH_APP_TYPE")).first()
         
         client_id = client_id or (client_id_setting.value if client_id_setting else None)
         client_secret = client_secret or (client_secret_setting.value if client_secret_setting else None)
+        app_type = os.getenv("OAUTH_APP_TYPE") or (app_type_setting.value if app_type_setting else "web")
 
     if not client_id:
         raise HTTPException(status_code=500, detail="Google Client ID not configured")
+    
     if app_type == "web" and not client_secret:
         raise HTTPException(status_code=500, detail="Google Client Secret not configured for Web App mode")
+
+    if app_type != "web":
+        logger.info(f"OAuth configured in {app_type} mode (no client secret required)")
 
     return {
         "web": {
