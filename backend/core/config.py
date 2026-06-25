@@ -70,11 +70,14 @@ def get_client_config():
     if not client_id:
         raise HTTPException(status_code=500, detail="Google Client ID not configured")
     
-    if app_type == "web" and not client_secret:
-        raise HTTPException(status_code=500, detail="Google Client Secret not configured for Web App mode")
+    if not client_secret:
+        if app_type == "web":
+            raise HTTPException(status_code=500, detail="Google Client Secret not configured for Web App mode")
+        else:
+            logger.warning(f"Google Client Secret not configured for {app_type} mode. Note that token refresh may fail without it.")
 
     if app_type != "web":
-        logger.info(f"OAuth configured in {app_type} mode (no client secret required)")
+        logger.info(f"OAuth configured in {app_type} mode.")
 
     return {
         "web": {

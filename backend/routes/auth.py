@@ -90,7 +90,7 @@ async def auth_callback(request: Request, code: str, state: str, background_task
         refresh_token=token_data.get("refresh_token"),
         token_uri=token_url,
         client_id=client_config["web"]["client_id"],
-        client_secret=client_config["web"].get("client_secret") if app_type == "web" else None,
+        client_secret=client_config["web"].get("client_secret"),
         scopes=get_requested_scopes()
     )
     

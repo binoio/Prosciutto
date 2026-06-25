@@ -24,8 +24,22 @@ def get_google_credentials(account_id: int, session: Session):
 
     try:
         creds_dict = json.loads(account.credentials_json)
-        creds = Credentials.from_authorized_user_info(creds_dict, SCOPES)
+        
+        # Robustness: ensure client_id and client_secret from config are available
+        # even if they weren't stored in the credentials_json (e.g. from a previous bug or config change)
+        from backend.core.config import get_client_config
+        try:
+            config = get_client_config()
+            web_config = config.get("web", {})
+            if not creds_dict.get("client_id") and web_config.get("client_id"):
+                creds_dict["client_id"] = web_config["client_id"]
+            if not creds_dict.get("client_secret") and web_config.get("client_secret"):
+                creds_dict["client_secret"] = web_config["client_secret"]
+        except Exception as e:
+            logger.debug(f"Could not load client config for credentials injection: {e}")
 
+        creds = Credentials.from_authorized_user_info(creds_dict, SCOPES)
+        
         # Check if creds need refresh
         if creds and creds.expired and creds.refresh_token:
             from google.auth.transport.requests import Request as GoogleRequest
@@ -60,6 +74,7 @@ def get_detailed_messages_batch(service, messages_meta, format="metadata", metad
 
     def callback(request_id, response, exception):
         if exception is not None:
+            logger.error(f"Error in batch request for {request_id}: {exception}")
             return
         
         headers = response.get("payload", {}).get("headers", [])
@@ -85,15 +100,20 @@ def get_detailed_messages_batch(service, messages_meta, format="metadata", metad
             
         detailed_messages_dict[request_id] = msg_data
 
-    batch = service.new_batch_http_request(callback=callback)
-    
-    for msg in messages_meta:
-        kwargs = {"userId": "me", "id": msg["id"], "format": format}
-        if metadata_headers:
-            kwargs["metadataHeaders"] = metadata_headers
-        batch.add(service.users().messages().get(**kwargs), request_id=msg["id"])
-    
-    batch.execute()
+    # Chunk the messages to avoid hitting Gmail's burst rate limit (250 units/sec)
+    # Each detailed fetch costs 5 units. 20 messages per batch = 100 units.
+    chunk_size = 20
+    for i in range(0, len(messages_meta), chunk_size):
+        chunk = messages_meta[i:i + chunk_size]
+        batch = service.new_batch_http_request(callback=callback)
+        
+        for msg in chunk:
+            kwargs = {"userId": "me", "id": msg["id"], "format": format}
+            if metadata_headers:
+                kwargs["metadataHeaders"] = metadata_headers
+            batch.add(service.users().messages().get(**kwargs), request_id=msg["id"])
+        
+        batch.execute()
 
     results = []
     for msg in messages_meta:

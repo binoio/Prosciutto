@@ -66,7 +66,7 @@ class CreateLabelRequest(BaseModel):
 async def list_messages(account_id: int, label: str = None, page_token: str = None, refresh: bool = False, session: Session = Depends(get_session)):
     service = get_gmail_service(account_id, session)
     if not service:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=404, detail=f"Gmail service not available for account {account_id}. Check server logs for credential errors.")
     
     cache_key = f"messages_{account_id}_{label}_{page_token}"
     if not refresh:
@@ -106,7 +106,7 @@ async def search_messages(
 ):
     service = get_gmail_service(account_id, session)
     if not service:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=404, detail=f"Gmail service not available for account {account_id}. Check server logs for credential errors.")
     
     try:
         kwargs = {
@@ -149,7 +149,7 @@ async def search_messages(
 async def get_message(account_id: int, message_id: str, session: Session = Depends(get_session)):
     service = get_gmail_service(account_id, session)
     if not service:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=404, detail=f"Gmail service not available for account {account_id}. Check server logs for credential errors.")
     
     try:
         msg = service.users().messages().get(userId="me", id=message_id).execute()
@@ -224,7 +224,7 @@ async def batch_delete_messages(account_id: int, request: BatchDeleteRequest, se
         
     service = get_gmail_service(account_id, session)
     if not service:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=404, detail=f"Gmail service not available for account {account_id}. Check server logs for credential errors.")
     
     try:
         cache.clear()
@@ -238,7 +238,7 @@ async def batch_delete_messages(account_id: int, request: BatchDeleteRequest, se
 async def delete_message(account_id: int, message_id: str, session: Session = Depends(get_session)):
     service = get_gmail_service(account_id, session)
     if not service:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=404, detail=f"Gmail service not available for account {account_id}. Check server logs for credential errors.")
     
     try:
         cache.clear()
@@ -255,7 +255,7 @@ async def batch_modify_messages(account_id: int, request: BatchModifyRequest, se
         
     service = get_gmail_service(account_id, session)
     if not service:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=404, detail=f"Gmail service not available for account {account_id}. Check server logs for credential errors.")
     
     try:
         cache.clear()
@@ -284,7 +284,7 @@ async def batch_modify_messages(account_id: int, request: BatchModifyRequest, se
 async def save_draft(account_id: int, request: SaveDraftRequest, session: Session = Depends(get_session)):
     service = get_gmail_service(account_id, session)
     if not service:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=404, detail=f"Gmail service not available for account {account_id}. Check server logs for credential errors.")
     
     try:
         cache.clear()
@@ -335,7 +335,7 @@ async def save_draft(account_id: int, request: SaveDraftRequest, session: Sessio
 async def send_email(account_id: int, request: SendEmailRequest, session: Session = Depends(get_session)):
     service = get_gmail_service(account_id, session)
     if not service:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=404, detail=f"Gmail service not available for account {account_id}. Check server logs for credential errors.")
     
     try:
         cache.clear()
@@ -382,7 +382,7 @@ async def send_email(account_id: int, request: SendEmailRequest, session: Sessio
 async def list_labels(account_id: int, session: Session = Depends(get_session)):
     service = get_gmail_service(account_id, session)
     if not service:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=404, detail=f"Gmail service not available for account {account_id}. Check server logs for credential errors.")
     
     try:
         results = service.users().labels().list(userId="me").execute()
@@ -400,7 +400,7 @@ async def list_labels(account_id: int, session: Session = Depends(get_session)):
 async def create_label(account_id: int, request: CreateLabelRequest, session: Session = Depends(get_session)):
     service = get_gmail_service(account_id, session)
     if not service:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=404, detail=f"Gmail service not available for account {account_id}. Check server logs for credential errors.")
     
     try:
         label = {
@@ -417,7 +417,7 @@ async def create_label(account_id: int, request: CreateLabelRequest, session: Se
 async def empty_label(account_id: int, label_id: str, session: Session = Depends(get_session)):
     service = get_gmail_service(account_id, session)
     if not service:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=404, detail=f"Gmail service not available for account {account_id}. Check server logs for credential errors.")
     
     try:
         cache.clear()

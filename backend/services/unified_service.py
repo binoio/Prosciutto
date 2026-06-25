@@ -1,5 +1,6 @@
 import json
 import base64
+import logging
 from typing import Optional, List
 from sqlmodel import Session, select
 from diskcache import Cache
@@ -7,6 +8,7 @@ from diskcache import Cache
 from backend.models import Account
 from backend.services.gmail_service import get_gmail_service, get_detailed_messages_batch
 
+logger = logging.getLogger(__name__)
 cache = Cache(".cache_dir")
 
 async def get_unified_messages(
@@ -26,26 +28,31 @@ async def get_unified_messages(
 
     accounts = session.exec(select(Account)).all()
     all_messages = []
-    
+
+    logger.info(f"Unified messages requested for label: {label}, refresh: {refresh}")
+    logger.info(f"Total accounts in DB: {len(accounts)}. Active account IDs: {active_ids}")
+
     tokens = {}
     if page_token:
         try:
             tokens = json.loads(base64.urlsafe_b64decode(page_token).decode("utf-8"))
         except Exception:
             tokens = {}
-            
+
     new_tokens = {}
-    
+
     for account in accounts:
         try:
             acc_id_str = str(account.id)
             if page_token and acc_id_str not in tokens:
                 continue
-                
+
             service = get_gmail_service(account.id, session)
-            if not service: continue
-            
-            kwargs = {"userId": "me", "maxResults": 50}
+            if not service: 
+                logger.warning(f"Could not get Gmail service for account {account.email}")
+                continue
+
+            kwargs = {"userId": "me", "maxResults": 20}
             if label:
                 kwargs["labelIds"] = [label]
             if acc_id_str in tokens:
@@ -53,19 +60,21 @@ async def get_unified_messages(
 
             results = service.users().messages().list(**kwargs).execute()
             messages_meta = results.get("messages", [])
-            
+            logger.info(f"Account {account.email}: found {len(messages_meta)} messages meta")
+
             if results.get("nextPageToken"):
                 new_tokens[acc_id_str] = results["nextPageToken"]
-            
+
             detailed_messages = get_detailed_messages_batch(service, messages_meta, format="metadata", metadata_headers=["Subject", "From", "Date"])
-            
+            logger.info(f"Account {account.email}: successfully fetched {len(detailed_messages)} detailed messages")
+
             for m in detailed_messages:
                 m["accountEmail"] = account.email
                 m["accountId"] = account.id
                 all_messages.append(m)
-        except Exception:
-            continue
-    
+        except Exception as e:
+            logger.error(f"Error fetching messages for account {account.email}: {str(e)}")
+            continue    
     next_page_token_str = None
     if new_tokens:
         next_page_token_str = base64.urlsafe_b64encode(json.dumps(new_tokens).encode("utf-8")).decode("utf-8")
@@ -75,6 +84,7 @@ async def get_unified_messages(
     cache.set(cache_key, response_data, expire=300)
     
     filtered_messages = [m for m in all_messages if m["accountId"] in active_ids]
+    logger.info(f"Returning {len(filtered_messages)} filtered messages out of {len(all_messages)} total")
     return {"messages": filtered_messages, "nextPageToken": next_page_token_str}
 
 async def search_unified_messages(
@@ -151,4 +161,5 @@ async def search_unified_messages(
     cache.set(cache_key, response_data, expire=300)
     
     filtered_messages = [m for m in all_messages if m["accountId"] in active_ids]
+    logger.info(f"Returning {len(filtered_messages)} filtered messages out of {len(all_messages)} total")
     return {"messages": filtered_messages, "nextPageToken": next_page_token_str}

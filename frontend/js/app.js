@@ -689,10 +689,17 @@ async function loadLabels(activeAccounts) {
 
         try {
             const res = await fetch(`/accounts/${acc.id}/labels`);
+            if (!res.ok) {
+                console.error(`Failed to fetch labels for ${acc.email}: ${res.status}`);
+                const errorItem = document.createElement('div');
+                errorItem.className = 'account-subset-item error-indicator';
+                errorItem.innerText = 'Error loading labels';
+                subset.appendChild(errorItem);
+                continue;
+            }
             const labels = await res.json();
-            
-            if (labels.length === 0) {
-                const empty = document.createElement('div');
+
+            if (!Array.isArray(labels) || labels.length === 0) {                const empty = document.createElement('div');
                 empty.className = 'account-subset-item';
                 empty.innerText = 'No custom labels';
                 empty.style.fontStyle = 'italic';
@@ -1053,6 +1060,7 @@ window.loadMailbox = async function(label, append = false, refresh = false) {
     
     const res = await fetch(url);
     const data = await res.json();
+    console.log("Mailbox data received:", data);
     nextPageToken = data.nextPageToken || null;
     
     const loadMoreBtn = document.getElementById('load-more-btn');
@@ -1088,6 +1096,7 @@ window.loadAccountMailbox = async function(accId, email, label, append = false, 
     
     const res = await fetch(url);
     const data = await res.json();
+    console.log("Mailbox data received:", data);
     nextPageToken = data.nextPageToken || null;
 
     const loadMoreBtn = document.getElementById('load-more-btn');
@@ -2455,15 +2464,20 @@ window.showLabelPicker = async function(event, msgId, accId) {
     };
     setTimeout(() => document.addEventListener('click', closeHandler), 0);
 
-    try {
-        const res = await fetch(`/accounts/${accId}/labels`);
-        const labels = await res.json();
-        
-        if (labels.length === 0) {
-            dropdown.innerHTML = '<div class="p-10 font-12 text-gray">No labels found</div>';
-        } else {
-            dropdown.innerHTML = '';
-            labels.forEach(l => {
+        try {
+            const res = await fetch(`/accounts/${accId}/labels`);
+            if (!res.ok) {
+                const error = await res.json();
+                dropdown.innerHTML = `<div class="p-10 font-12 error-indicator">Error: ${error.detail || res.statusText}</div>`;
+                return;
+            }
+            const labels = await res.json();
+            
+            if (!Array.isArray(labels) || labels.length === 0) {
+                dropdown.innerHTML = '<div class="p-10 font-12 text-gray">No labels found</div>';
+            } else {
+                dropdown.innerHTML = '';
+                labels.forEach(l => {
                 const item = document.createElement('div');
                 item.className = 'label-picker-item cursor-pointer font-13 p-8-15';
                 item.innerText = l.name;

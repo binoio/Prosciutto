@@ -188,9 +188,8 @@ def test_unified_inbox_message_count(mock_creds_class, mock_build, client: TestC
 
         # The user says "account 1 inbox has 0 messages, account 2 inbox has 20 messages, unified inbox has 10 messages"
         # This is because maxResults was set to 10 in unified_messages.
-        # If we want it to be ACCURATE, it should be 50 if there are 50.
-        assert len(data["messages"]) == 50
-
+        # If we want it to be ACCURATE, it should be 20 if there are 20 (maxResults).
+        assert len(data["messages"]) == 20
 @patch("backend.services.gmail_service.build")
 @patch("backend.services.gmail_service.Credentials")
 def test_unified_inbox_pagination(mock_creds_class, mock_build, client: TestClient, session: Session):
